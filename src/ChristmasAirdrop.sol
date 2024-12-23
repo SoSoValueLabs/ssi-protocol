@@ -4,7 +4,6 @@ pragma solidity ^0.8.25;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-// import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
@@ -27,9 +26,10 @@ contract ChristmasAirdrop is Ownable, Pausable, ReentrancyGuard {
     event ExpirationTimeUpdated(uint256 newExpirationTime);
 
     constructor(
+        address owner,
         bytes32 _merkleRoot,
         uint256 _expirationTime
-    ) Ownable(msg.sender) {
+    ) Ownable(owner) {
         merkleRoot = _merkleRoot;
         expirationTime = _expirationTime;
     }
@@ -52,15 +52,15 @@ contract ChristmasAirdrop is Ownable, Pausable, ReentrancyGuard {
     ) internal {
         require(block.timestamp <= expirationTime, "Airdrop has expired");
         uint256 claimed = hasClaimed[recipient][token];
+        require(amount > claimed, "Already claimed");
         uint256 claimableAmount = amount - claimed;
         bytes32 leaf = keccak256(abi.encodePacked(recipient, token, amount));
-        // Verify Merkle Proof
         require(
             MerkleProof.verify(proof, merkleRoot, leaf),
             "Invalid Merkle Proof"
         );
         if (claimableAmount > 0) {
-            hasClaimed[recipient][token] = claimableAmount;
+            hasClaimed[recipient][token] = amount;
             IERC20(token).safeTransfer(recipient, claimableAmount);
             emit AirdropClaimed(recipient, token, claimableAmount);
         }
@@ -86,15 +86,11 @@ contract ChristmasAirdrop is Ownable, Pausable, ReentrancyGuard {
                 recipients.length == proofs.length,
             "Input arrays length mismatch"
         );
-
         for (uint256 i = 0; i < recipients.length; i++) {
             address recipient = recipients[i];
             address token = tokens[i];
             uint256 amount = amounts[i];
             bytes32[] calldata proof = proofs[i];
-            if (block.timestamp > expirationTime) {
-                break;
-            }
             uint256 claimed = hasClaimed[recipient][token];
             uint256 claimableAmount = amount - claimed;
             if (claimableAmount > 0) {
@@ -104,13 +100,12 @@ contract ChristmasAirdrop is Ownable, Pausable, ReentrancyGuard {
     }
 
     function withdrawTokens(
-        address to,
         address token,
         uint256 amount
     ) external onlyOwner nonReentrant {
         uint256 balance = IERC20(token).balanceOf(address(this));
         require(amount <= balance, "Insufficient token balance");
-        IERC20(token).safeTransfer(to, amount);
-        emit TokensWithdrawn(to, token, amount);
+        IERC20(token).safeTransfer(msg.sender, amount);
+        emit TokensWithdrawn(msg.sender, token, amount);
     }
 }
