@@ -466,8 +466,9 @@ contract FundManagerTest is Test {
         vm.startPrank(ap);
         WETH.mint(ap, 10 ** WETH.decimals());
         WETH.approve(address(issuer), 10 ** WETH.decimals());
+        uint256 assetID = assetToken.id();
         vm.expectRevert();
-        issuer.addMintRequest(assetToken.id(), orderInfo, 10000);
+        issuer.addMintRequest(assetID, orderInfo, 10000);
         vm.stopPrank();
     }
 
@@ -559,25 +560,26 @@ contract FundManagerTest is Test {
         OrderInfo memory orderInfo = pmmQuoteMint();
         WETH.mint(ap, 10 ** WETH.decimals() * (10**8 + 10000) / 10**8);
         WETH.approve(address(issuer), 10 ** WETH.decimals() * (10**8 + 10000) / 10**8);
+        uint256 assetID = assetToken.id();
         vm.startPrank(owner);
-        issuer.setIssueAmountRange(assetToken.id(), Range({
+        issuer.setIssueAmountRange(assetID, Range({
             min: 400 * 10**8,
             max: 10000 * 10**8
         }));
         vm.stopPrank();
         vm.startPrank(ap);
         vm.expectRevert(bytes("mint amount not in range"));
-        issuer.addMintRequest(assetToken.id(), orderInfo, 10000);
+        issuer.addMintRequest(assetID, orderInfo, 10000);
         vm.stopPrank();
         vm.startPrank(owner);
-        issuer.setIssueAmountRange(assetToken.id(), Range({
+        issuer.setIssueAmountRange(assetID, Range({
             min: 100 * 10**8,
             max: 200 * 10**8
         }));
         vm.stopPrank();
         vm.startPrank(ap);
         vm.expectRevert(bytes("mint amount not in range"));
-        issuer.addMintRequest(assetToken.id(), orderInfo, 10000);
+        issuer.addMintRequest(assetID, orderInfo, 10000);
         vm.stopPrank();
     }
 
@@ -588,25 +590,26 @@ contract FundManagerTest is Test {
         vm.startPrank(ap);
         assetToken.approve(address(issuer), orderInfo.order.inAmount);
         vm.stopPrank();
+        uint256 assetID = assetToken.id();
         vm.startPrank(owner);
-        issuer.setIssueAmountRange(assetToken.id(), Range({
+        issuer.setIssueAmountRange(assetID, Range({
             min: 400 * 10**8,
             max: 10000 * 10**8
         }));
         vm.stopPrank();
         vm.startPrank(ap);
         vm.expectRevert(bytes("redeem amount not in range"));
-        issuer.addRedeemRequest(assetToken.id(), orderInfo, 10000);
+        issuer.addRedeemRequest(assetID, orderInfo, 10000);
         vm.stopPrank();
         vm.startPrank(owner);
-        issuer.setIssueAmountRange(assetToken.id(), Range({
+        issuer.setIssueAmountRange(assetID, Range({
             min: 100 * 10**8,
             max: 200 * 10**8
         }));
         vm.stopPrank();
         vm.startPrank(ap);
         vm.expectRevert(bytes("redeem amount not in range"));
-        issuer.addRedeemRequest(assetToken.id(), orderInfo, 10000);
+        issuer.addRedeemRequest(assetID, orderInfo, 10000);
         vm.stopPrank();
     }
 
