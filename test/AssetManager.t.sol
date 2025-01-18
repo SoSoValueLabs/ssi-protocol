@@ -40,9 +40,18 @@ contract FundManagerTest is Test {
             abi.encodeCall(AssetFactory.initialize, (owner, vault, "SETH", address(tokenImpl)))
         ));
         factory = AssetFactory(factoryAddress);
-        issuer = new AssetIssuer(owner, address(factory));
-        rebalancer = new AssetRebalancer(owner, address(factory));
-        feeManager = new AssetFeeManager(owner, address(factory));
+        issuer = AssetIssuer(address(new ERC1967Proxy(
+            address(new AssetIssuer()),
+            abi.encodeCall(AssetController.initialize, (owner, address(factory)))
+        )));
+        rebalancer = AssetRebalancer(address(new ERC1967Proxy(
+            address(new AssetRebalancer()),
+            abi.encodeCall(AssetController.initialize, (owner, address(factory)))
+        )));
+        feeManager = AssetFeeManager(address(new ERC1967Proxy(
+            address(new AssetFeeManager()),
+            abi.encodeCall(AssetController.initialize, (owner, address(factory)))
+        )));
         swap.grantRole(swap.MAKER_ROLE(), pmm);
         swap.grantRole(swap.TAKER_ROLE(), address(issuer));
         swap.grantRole(swap.TAKER_ROLE(), address(rebalancer));

@@ -4,7 +4,7 @@ import "./Interface.sol";
 import {AssetController} from "./AssetController.sol";
 import {Utils} from './Utils.sol';
 
-import "forge-std/console.sol";
+// import "forge-std/console.sol";
 
 contract AssetFeeManager is AssetController, IAssetFeeManager {
     Request[] burnFeeRequests;
@@ -12,11 +12,6 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
     event AddBurnFeeRequest(uint nonce);
     event RejectBurnFeeRequest(uint nonce);
     event ConfirmBurnFeeRequest(uint nonce);
-
-    constructor(address owner, address factoryAddress_)
-        AssetController(owner, factoryAddress_) {
-
-    }
 
     function setFee(uint256 assetID, uint256 fee) external onlyOwner {
         IAssetFactory factory = IAssetFactory(factoryAddress);
@@ -104,5 +99,21 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         burnFeeRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockBurnFee();
         emit ConfirmBurnFeeRequest(nonce);
+    }
+
+    function migrateFrom(address oldFeeManagerAddress, uint256 maxRequest) external onlyOwner {
+        require(oldFeeManagerAddress != address(0), "old feeManager is zero address");
+        IAssetFeeManager feeManager = IAssetFeeManager(oldFeeManagerAddress);
+        require(factoryAddress == feeManager.factoryAddress(), "not the same factory");
+        // burnFeeRequests
+        uint256 burnFeeRequestCnt = feeManager.getBurnFeeRequestLength();
+        uint256 curBurnFeeRequestCnt = burnFeeRequests.length;
+        uint256 toBurnFeeRequestCnt = curBurnFeeRequestCnt + maxRequest;
+        if (toBurnFeeRequestCnt > burnFeeRequestCnt) {
+            toBurnFeeRequestCnt = burnFeeRequestCnt;
+        }
+        for (uint256 nonce = curBurnFeeRequestCnt; nonce < toBurnFeeRequestCnt; nonce++) {
+            burnFeeRequests.push(feeManager.getBurnFeeRequest(nonce));
+        }
     }
 }

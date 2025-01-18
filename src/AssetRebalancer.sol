@@ -4,7 +4,7 @@ import "./Interface.sol";
 import {AssetController} from "./AssetController.sol";
 import {Utils} from './Utils.sol';
 
-import "forge-std/console.sol";
+// import "forge-std/console.sol";
 
 contract AssetRebalancer is AssetController, IAssetRebalancer {
     Request[] rebalanceRequests;
@@ -12,11 +12,6 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
     event AddRebalanceRequest(uint nonce);
     event RejectRebalanceRequest(uint nonce);
     event ConfirmRebalanceRequest(uint nonce);
-
-    constructor(address owner, address factoryAddress_)
-        AssetController(owner, factoryAddress_) {
-
-    }
 
     // rebalance
 
@@ -97,5 +92,21 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         rebalanceRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockRebalance();
         emit ConfirmRebalanceRequest(nonce);
+    }
+
+    function migrateFrom(address oldRebalancerAddress, uint256 maxRequest) external onlyOwner {
+        require(oldRebalancerAddress != address(0), "old rebalancer is zero address");
+        IAssetRebalancer rebalancer = IAssetRebalancer(oldRebalancerAddress);
+        require(factoryAddress == rebalancer.factoryAddress(), "not the same factory");
+        // rebalanceRequests
+        uint256 rebalanceRequestCnt = rebalancer.getRebalanceRequestLength();
+        uint256 curRebalanceRequestCnt = rebalanceRequests.length;
+        uint256 toRebalanceRequestCnt = curRebalanceRequestCnt + maxRequest;
+        if (toRebalanceRequestCnt > rebalanceRequestCnt) {
+            toRebalanceRequestCnt = rebalanceRequestCnt;
+        }
+        for (uint256 nonce = curRebalanceRequestCnt; nonce < toRebalanceRequestCnt; nonce++) {
+            rebalanceRequests.push(rebalancer.getRebalanceRequest(nonce));
+        }
     }
 }

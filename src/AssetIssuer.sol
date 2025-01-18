@@ -7,7 +7,7 @@ import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Utils} from './Utils.sol';
 
-import "forge-std/console.sol";
+// import "forge-std/console.sol";
 
 contract AssetIssuer is AssetController, IAssetIssuer {
     using SafeERC20 for IERC20;
@@ -26,7 +26,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
     Request[] mintRequests;
     Request[] redeemRequests;
 
-    uint256 public feeDecimals = 8;
+    uint256 public constant feeDecimals = 8;
 
     mapping(address => mapping(address => uint256)) public claimables;
     mapping(address => uint256) public tokenClaimables;
@@ -41,10 +41,6 @@ contract AssetIssuer is AssetController, IAssetIssuer {
     event AddRedeemRequest(uint nonce);
     event RejectRedeemRequest(uint nonce);
     event ConfirmRedeemRequest(uint nonce, bool force);
-
-    constructor(address owner, address factoryAddress_)
-        AssetController(owner, factoryAddress_) {
-    }
 
     function getIssueAmountRange(uint256 assetID) external view returns (Range memory) {
         require(_minAmounts.contains(assetID) && _maxAmounts.contains(assetID), "issue amount range not set");
@@ -362,5 +358,57 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         claimables[token][msg.sender] = 0;
         tokenClaimables[token] -= amount;
         IERC20(token).safeTransfer(msg.sender, amount);
+    }
+
+    function migrateFrom(address oldIssuerAddress, uint256 maxParticipants, uint256 maxRequest) external onlyOwner {
+        require(oldIssuerAddress != address(0), "old issuer is zero address");
+        IAssetIssuer issuer = IAssetIssuer(oldIssuerAddress);
+        require(factoryAddress == issuer.factoryAddress(), "not the same factory");
+        IAssetFactory factory = IAssetFactory(factoryAddress);
+        uint256[] memory assetIDs = factory.getAssetIDs();
+        for (uint i = 0; i < assetIDs.length; i++) {
+            // range
+            Range memory issueAmountRange = issuer.getIssueAmountRange(assetIDs[i]);
+            if (!_minAmounts.contains(assetIDs[i])) {
+                _minAmounts.set(assetIDs[i], issueAmountRange.min);
+            }
+            if (!_maxAmounts.contains(assetIDs[i])) {
+                _maxAmounts.set(assetIDs[i], issueAmountRange.max);
+            }
+            // issue fee
+            if (!_issueFees.contains(assetIDs[i])) {
+                _issueFees.set(assetIDs[i], issuer.getIssueFee(assetIDs[i]));
+            }
+            // participants
+            uint256 participantCnt = issuer.getParticipantLength(assetIDs[i]);
+            uint256 curParticipantCnt = _participants[assetIDs[i]].length();
+            uint256 toParticipantCnt = curParticipantCnt + maxParticipants;
+            if (toParticipantCnt > participantCnt) {
+                toParticipantCnt = participantCnt;
+            }
+            for (uint256 idx = curParticipantCnt; idx < toParticipantCnt; idx++) {
+                _participants[assetIDs[i]].add(issuer.getParticipant(assetIDs[i], idx));
+            }
+        }
+        // mintRequests
+        uint256 mintRequestCnt = issuer.getMintRequestLength();
+        uint256 curMintRequestCnt = mintRequests.length;
+        uint256 toMintRequestCnt = curMintRequestCnt + maxRequest;
+        if (toMintRequestCnt > mintRequestCnt) {
+            toMintRequestCnt = mintRequestCnt;
+        }
+        for (uint256 nonce = curMintRequestCnt; nonce < toMintRequestCnt; nonce++) {
+            mintRequests.push(issuer.getMintRequest(nonce));
+        }
+        // redeemRequests
+        uint256 redeemRequestCnt = issuer.getRedeemRequestLength();
+        uint256 curRedeemRequestCnt = redeemRequests.length;
+        uint256 toRedeemRequestCnt = curRedeemRequestCnt + maxRequest;
+        if (toRedeemRequestCnt > redeemRequestCnt) {
+            toRedeemRequestCnt = redeemRequestCnt;
+        }
+        for (uint256 nonce = curRedeemRequestCnt; nonce < toRedeemRequestCnt; nonce++) {
+            redeemRequests.push(issuer.getRedeemRequest(nonce));
+        }
     }
 }

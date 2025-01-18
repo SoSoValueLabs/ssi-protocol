@@ -7,6 +7,7 @@ import "../src/Interface.sol";
 import {Swap} from "../src/Swap.sol";
 import {AssetFactory} from "../src/AssetFactory.sol";
 import {AssetToken} from "../src/AssetFactory.sol";
+import {AssetController} from "../src/AssetController.sol";
 import {AssetIssuer} from "../src/AssetIssuer.sol";
 import {AssetRebalancer} from "../src/AssetRebalancer.sol";
 import {AssetFeeManager} from "../src/AssetFeeManager.sol";
@@ -33,6 +34,9 @@ contract UpgradeTest is Test {
     AssetLocking assetLocking;
     USSI uSSI;
     StakeToken sUSSI;
+    AssetIssuer issuer;
+    AssetFeeManager feeManager;
+    AssetRebalancer rebalancer;
 
     function getAsset() public view returns (Asset memory) {
         Token[] memory tokenset_ = new Token[](1);
@@ -60,9 +64,21 @@ contract UpgradeTest is Test {
             address(factoryImpl),
             abi.encodeCall(AssetFactory.initialize, (owner, vault, chain, address(tokenImpl)))
         )));
-        AssetIssuer issuer = new AssetIssuer(owner, address(factory));
-        AssetRebalancer rebalancer = new AssetRebalancer(owner, address(factory));
-        AssetFeeManager feeManager = new AssetFeeManager(owner, address(factory));
+        AssetIssuer issuerImpl = new AssetIssuer();
+        issuer = AssetIssuer(address(new ERC1967Proxy(
+            address(issuerImpl),
+            abi.encodeCall(AssetController.initialize, (owner, address(factory)))
+        )));
+        AssetRebalancer rebalancerImpl = new AssetRebalancer();
+        rebalancer = AssetRebalancer(address(new ERC1967Proxy(
+            address(rebalancerImpl),
+            abi.encodeCall(AssetController.initialize, (owner, address(factory)))
+        )));
+        AssetFeeManager feeManagerImpl = new AssetFeeManager();
+        feeManager = AssetFeeManager(address(new ERC1967Proxy(
+            address(feeManagerImpl),
+            abi.encodeCall(AssetController.initialize, (owner, address(factory)))
+        )));
 
         vm.startPrank(owner);
         assetToken = AssetFactory(factory).createAssetToken(getAsset(), 10000, address(issuer), address(rebalancer), address(feeManager), address(swap));
@@ -147,6 +163,18 @@ contract UpgradeTest is Test {
         sUSSI.upgradeToAndCall(sussiImpl, new bytes(0));
         assertEq(Upgrades.getImplementationAddress(address(sUSSI)), sussiImpl);
         assertEq(sUSSI.cooldown(), 7 days);
+        // upgrade issuer
+        address issuerImpl = address(new AssetIssuer());
+        issuer.upgradeToAndCall(issuerImpl, new bytes(0));
+        assertEq(Upgrades.getImplementationAddress(address(issuer)), issuerImpl);
+        // upgrade rebalancer
+        address rebalancerImpl = address(new AssetRebalancer());
+        rebalancer.upgradeToAndCall(rebalancerImpl, new bytes(0));
+        assertEq(Upgrades.getImplementationAddress(address(rebalancer)), rebalancerImpl);
+        // upgrade feeManager
+        address feeManagerImpl = address(new AssetFeeManager());
+        feeManager.upgradeToAndCall(feeManagerImpl, new bytes(0));
+        assertEq(Upgrades.getImplementationAddress(address(feeManager)), feeManagerImpl);
         vm.stopPrank();
     }
 }

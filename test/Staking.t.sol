@@ -68,7 +68,10 @@ contract StakingTest is Test {
             abi.encodeCall(AssetFactory.initialize, (owner, vault, "SETH", address(tokenImpl)))
         ));
         factory = AssetFactory(factoryAddress);
-        issuer = new AssetIssuer(owner, address(factory));
+        issuer = AssetIssuer(address(new ERC1967Proxy(
+            address(new AssetIssuer()),
+            abi.encodeCall(AssetController.initialize, (owner, address(factory)))
+        )));
         address assetTokenAddress = factory.createAssetToken(getAsset(), 10000, address(issuer), rebalancer, feeManager, swap);
         assetToken = AssetToken(assetTokenAddress);
         StakeToken stakeTokenImpl = new StakeToken();
@@ -136,13 +139,28 @@ contract StakingTest is Test {
         vm.startPrank(staker);
         vm.expectRevert();
         stakeToken.withdraw(cooldownAmount);
+        vm.stopPrank();
         vm.warp(block.timestamp + stakeToken.cooldown());
+        //// update cooldown
+        vm.startPrank(owner);
+        stakeFactory.updateCooldown(assetToken.id(), 3600*24*14);
+        assertEq(stakeToken.cooldown(), 3600*24*14);
+        vm.stopPrank();
+        vm.startPrank(staker);
         stakeToken.withdraw(cooldownAmount);
         // check balance
         assertEq(assetToken.balanceOf(staker), unstakeAmount);
         assertEq(stakeToken.balanceOf(staker), stakeAmount - unstakeAmount);
         assertEq(stakeToken.totalSupply(), stakeAmount - unstakeAmount);
         assertEq(assetToken.totalSupply(), stakeAmount);
+        // stake again to test new cooldown duration
+        stakeToken.stake(unstakeAmount);
+        stakeToken.unstake(unstakeAmount);
+        vm.warp(block.timestamp + 3600*24*7);
+        vm.expectRevert();
+        stakeToken.withdraw(unstakeAmount);
+        vm.warp(block.timestamp + 3600*24*7);
+        stakeToken.withdraw(unstakeAmount);
         vm.stopPrank();
         // lock
         uint256 lockAmount = stakeAmount - unstakeAmount;

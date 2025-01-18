@@ -19,7 +19,7 @@ then
     fi
 fi
 
-account=`cast wallet list | head -n 1 | awk '{print $1}'`
+account="ssi-deployer"
 address=`cast wallet address --account ${account}`
 echo "deploy using wallet ${address}"
 source .deploy.env
