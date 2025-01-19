@@ -9,18 +9,34 @@ import {Utils} from './Utils.sol';
 contract AssetRebalancer is AssetController, IAssetRebalancer {
     Request[] rebalanceRequests;
 
+    address oldRebalancerAddress;
+    uint256 oldRebalanceRequestCnt;
+
     event AddRebalanceRequest(uint nonce);
     event RejectRebalanceRequest(uint nonce);
     event ConfirmRebalanceRequest(uint nonce);
+    event MigrateFrom(address oldRebalancerAddress, uint256 oldRebalanceRequestCnt);
 
     // rebalance
 
     function getRebalanceRequestLength() external view returns (uint256) {
-        return rebalanceRequests.length;
+        return rebalanceRequests.length + oldRebalanceRequestCnt;
     }
 
     function getRebalanceRequest(uint256 nonce) external view returns (Request memory) {
-        return rebalanceRequests[nonce];
+        if (nonce < oldRebalanceRequestCnt) {
+            return IAssetRebalancer(oldRebalancerAddress).getRebalanceRequest(nonce);
+        }
+        return rebalanceRequests[_internalRebalanceNonce(nonce)];
+    }
+
+    function _internalRebalanceNonce(uint256 nonce) internal view returns (uint256) {
+        require(nonce >= oldRebalanceRequestCnt, "old nonce");
+        return nonce - oldRebalanceRequestCnt;
+    }
+
+    function _externalRebalanceNonce(uint256 nonce) internal view returns (uint256) {
+        return nonce + oldRebalanceRequestCnt;
     }
 
     function addRebalanceRequest(uint256 assetID, Token[] memory basket, OrderInfo memory orderInfo) external onlyOwner returns (uint256) {
@@ -58,12 +74,13 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
             issueFee: 0
         }));
         assetToken.lockRebalance();
-        emit AddRebalanceRequest(rebalanceRequests.length - 1);
-        return rebalanceRequests.length - 1;
+        emit AddRebalanceRequest(_externalRebalanceNonce(rebalanceRequests.length - 1));
+        return _externalRebalanceNonce(rebalanceRequests.length - 1);
     }
 
     function rejectRebalanceRequest(uint nonce) external onlyOwner {
-        require(nonce < rebalanceRequests.length);
+        nonce = _internalRebalanceNonce(nonce);
+        require(nonce < rebalanceRequests.length, "nonce too large");
         Request memory rebalanceRequest = rebalanceRequests[nonce];
         require(rebalanceRequest.status == RequestStatus.PENDING);
         ISwap swap = ISwap(rebalanceRequest.swapAddress);
@@ -72,11 +89,12 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         IAssetToken assetToken = IAssetToken(rebalanceRequest.assetTokenAddress);
         assetToken.unlockRebalance();
         rebalanceRequests[nonce].status = RequestStatus.REJECTED;
-        emit RejectRebalanceRequest(nonce);
+        emit RejectRebalanceRequest(_externalRebalanceNonce(nonce));
     }
 
     function confirmRebalanceRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external onlyOwner {
-        require(nonce < rebalanceRequests.length);
+        nonce = _internalRebalanceNonce(nonce);
+        require(nonce < rebalanceRequests.length, "nonce too large");
         Request memory rebalanceRequest = rebalanceRequests[nonce];
         checkRequestOrderInfo(rebalanceRequest, orderInfo);
         require(rebalanceRequest.status == RequestStatus.PENDING);
@@ -91,22 +109,15 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         assetToken.rebalance(inBasket, outBasket);
         rebalanceRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockRebalance();
-        emit ConfirmRebalanceRequest(nonce);
+        emit ConfirmRebalanceRequest(_externalRebalanceNonce(nonce));
     }
 
-    function migrateFrom(address oldRebalancerAddress, uint256 maxRequest) external onlyOwner {
-        require(oldRebalancerAddress != address(0), "old rebalancer is zero address");
-        IAssetRebalancer rebalancer = IAssetRebalancer(oldRebalancerAddress);
-        require(factoryAddress == rebalancer.factoryAddress(), "not the same factory");
-        // rebalanceRequests
-        uint256 rebalanceRequestCnt = rebalancer.getRebalanceRequestLength();
-        uint256 curRebalanceRequestCnt = rebalanceRequests.length;
-        uint256 toRebalanceRequestCnt = curRebalanceRequestCnt + maxRequest;
-        if (toRebalanceRequestCnt > rebalanceRequestCnt) {
-            toRebalanceRequestCnt = rebalanceRequestCnt;
-        }
-        for (uint256 nonce = curRebalanceRequestCnt; nonce < toRebalanceRequestCnt; nonce++) {
-            rebalanceRequests.push(rebalancer.getRebalanceRequest(nonce));
-        }
+    function migrateFrom(address oldRebalancerAddress_) external onlyOwner {
+        require(oldRebalancerAddress_ != address(0), "old feeManager is zero address");
+        IAssetRebalancer oldRebalancer = IAssetRebalancer(oldRebalancerAddress_);
+        require(IPausable(oldRebalancerAddress_).paused(), "old fee manager is not paused");
+        oldRebalancerAddress = oldRebalancerAddress_;
+        oldRebalanceRequestCnt = oldRebalancer.getRebalanceRequestLength();
+        emit MigrateFrom(oldRebalancerAddress, oldRebalanceRequestCnt);
     }
 }

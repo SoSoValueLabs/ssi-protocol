@@ -23,6 +23,7 @@ contract MigrateTest is Test {
     Swap swap;
 
     function setUp() public {
+        vm.createSelectFork("https://mainnet.base.org");
         issuer = AssetIssuer(address(new ERC1967Proxy(
             address(new AssetIssuer()),
             abi.encodeCall(AssetController.initialize, (owner, address(factory)))
@@ -44,38 +45,44 @@ contract MigrateTest is Test {
     function testIssuerMigrate() public {
         IAssetIssuer oldIssuer = IAssetIssuer(oldIssuerAddress);
         vm.expectRevert();
-        issuer.migrateFrom(oldIssuerAddress, 10, 50);
+        issuer.migrateFrom(oldIssuerAddress);
         vm.startPrank(owner);
-        do {
-            issuer.migrateFrom(oldIssuerAddress, 10, 50);
-        } while (issuer.getMintRequestLength() < oldIssuer.getMintRequestLength() ||
-            issuer.getRedeemRequestLength() < oldIssuer.getRedeemRequestLength());
+        vm.expectRevert();
+        issuer.migrateFrom(oldIssuerAddress);
+        IPausable(oldIssuerAddress).pause();
+        issuer.migrateFrom(oldIssuerAddress);
         assertEq(issuer.getMintRequestLength(), oldIssuer.getMintRequestLength());
+        assertEq(abi.encode(issuer.getMintRequest(issuer.getMintRequestLength() / 2)), abi.encode(oldIssuer.getMintRequest(oldIssuer.getMintRequestLength() / 2)));
         assertEq(issuer.getRedeemRequestLength(), oldIssuer.getRedeemRequestLength());
+        assertEq(abi.encode(issuer.getRedeemRequest(issuer.getRedeemRequestLength() / 2)), abi.encode(oldIssuer.getRedeemRequest(oldIssuer.getRedeemRequestLength() / 2)));
         vm.stopPrank();
     }
 
     function testRebalancerMigrate() public {
         IAssetRebalancer oldRebalancer = IAssetRebalancer(oldRebalancerAddress);
         vm.expectRevert();
-        rebalancer.migrateFrom(oldRebalancerAddress, 50);
+        rebalancer.migrateFrom(oldRebalancerAddress);
         vm.startPrank(owner);
-        do {
-            rebalancer.migrateFrom(oldRebalancerAddress, 50);
-        } while (rebalancer.getRebalanceRequestLength() < oldRebalancer.getRebalanceRequestLength());
+        vm.expectRevert();
+        rebalancer.migrateFrom(oldRebalancerAddress);
+        IPausable(oldRebalancerAddress).pause();
+        rebalancer.migrateFrom(oldRebalancerAddress);
         assertEq(rebalancer.getRebalanceRequestLength(), oldRebalancer.getRebalanceRequestLength());
+        assertEq(abi.encode(rebalancer.getRebalanceRequest(rebalancer.getRebalanceRequestLength() / 2)), abi.encode(oldRebalancer.getRebalanceRequest(oldRebalancer.getRebalanceRequestLength() / 2)));
         vm.stopPrank();
     }
 
     function testFeeManagerMigrate() public {
         IAssetFeeManager oldFeeManager = IAssetFeeManager(oldFeeManagerAddress);
         vm.expectRevert();
-        feeManager.migrateFrom(oldFeeManagerAddress, 50);
+        feeManager.migrateFrom(oldFeeManagerAddress);
         vm.startPrank(owner);
-        do {
-            feeManager.migrateFrom(oldFeeManagerAddress, 50);
-        } while (feeManager.getBurnFeeRequestLength() < oldFeeManager.getBurnFeeRequestLength());
+        vm.expectRevert();
+        feeManager.migrateFrom(oldFeeManagerAddress);
+        IPausable(oldFeeManagerAddress).pause();
+        feeManager.migrateFrom(oldFeeManagerAddress);
         assertEq(feeManager.getBurnFeeRequestLength(), oldFeeManager.getBurnFeeRequestLength());
+        assertEq(abi.encode(feeManager.getBurnFeeRequest(feeManager.getBurnFeeRequestLength() / 2)), abi.encode(oldFeeManager.getBurnFeeRequest(oldFeeManager.getBurnFeeRequestLength() / 2)));
         vm.stopPrank();
     }
 
@@ -84,20 +91,13 @@ contract MigrateTest is Test {
         vm.expectRevert();
         swap.migrateFrom(oldSwapAddress);
         vm.startPrank(owner);
-        swap.migrateFrom(oldSwapAddress);
-        assertEq(abi.encode(swap.getWhiteListTokens()), abi.encode(oldSwap.getWhiteListTokens()));
-        vm.stopPrank();
-    }
-
-    function testSwapMigrateSwapRequest() public {
-        ISwap oldSwap = ISwap(oldSwapAddress);
         vm.expectRevert();
-        swap.migrateSwapRequestFrom(oldSwapAddress, 10);
-        vm.startPrank(owner);
-        do {
-            swap.migrateSwapRequestFrom(oldSwapAddress, 10);
-        } while (swap.getOrderHashLength() < oldSwap.getOrderHashLength());
+        swap.migrateFrom(oldSwapAddress);
+        IPausable(oldSwapAddress).pause();
+        swap.migrateFrom(oldSwapAddress);
         assertEq(swap.getOrderHashLength(), oldSwap.getOrderHashLength());
+        assertEq(swap.getOrderHash(swap.getOrderHashLength() / 2), oldSwap.getOrderHash(oldSwap.getOrderHashLength() / 2));
+        assertEq(abi.encode(swap.getSwapRequest(swap.getOrderHash(swap.getOrderHashLength() / 2))), abi.encode(oldSwap.getSwapRequest(oldSwap.getOrderHash(oldSwap.getOrderHashLength() / 2))));
         vm.stopPrank();
     }
 }

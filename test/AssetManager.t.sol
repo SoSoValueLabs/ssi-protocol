@@ -15,8 +15,8 @@ import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Test, console} from "forge-std/Test.sol";
 
 contract FundManagerTest is Test {
-    MockToken WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
-    MockToken WETH = new MockToken("Wrapped ETH", "WETH", 18);
+    MockToken WBTC;
+    MockToken WETH;
 
     address owner = vm.addr(0x1);
     address vault = vm.parseAddress("0xc9b6174bDF1deE9Ba42Af97855Da322b91755E63");
@@ -31,6 +31,11 @@ contract FundManagerTest is Test {
     AssetFactory factoryImpl;
 
     function setUp() public {
+        if (vm.envBool("TEST_AFTER_MIGRATE")) {
+            vm.createSelectFork("https://mainnet.base.org");
+        }
+        WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
+        WETH = new MockToken("Wrapped ETH", "WETH", 18);
         vm.startPrank(owner);
         swap = Swap(address(new ERC1967Proxy(
             address(new Swap()),
@@ -55,6 +60,22 @@ contract FundManagerTest is Test {
             address(new AssetFeeManager()),
             abi.encodeCall(AssetController.initialize, (owner, address(factory)))
         )));
+        vm.stopPrank();
+        if (vm.envBool("TEST_AFTER_MIGRATE")) {
+            vm.startPrank(0xd463D3d8333b7AD6a14d00e1700C80AF5A37F751);
+            IPausable(0xdc74D8C5D9a900fdF8a6D03Ad419b236c9A1AD1d).pause();
+            IPausable(0x996c93827Ab4C55B1044aDd903D2bDb0dcd546BA).pause();
+            IPausable(0x242626E1eCe44601A69d9BC3f72a755Eb393f4b1).pause();
+            IPausable(0x640cB7201810BC920835A598248c4fe4898Bb5e0).pause();
+            vm.stopPrank();
+            vm.startPrank(owner);
+            issuer.migrateFrom(0xdc74D8C5D9a900fdF8a6D03Ad419b236c9A1AD1d);
+            feeManager.migrateFrom(0x996c93827Ab4C55B1044aDd903D2bDb0dcd546BA);
+            rebalancer.migrateFrom(0x242626E1eCe44601A69d9BC3f72a755Eb393f4b1);
+            swap.migrateFrom(0x640cB7201810BC920835A598248c4fe4898Bb5e0);
+            vm.stopPrank();
+        }
+        vm.startPrank(owner);
         swap.grantRole(swap.MAKER_ROLE(), pmm);
         swap.grantRole(swap.TAKER_ROLE(), address(issuer));
         swap.grantRole(swap.TAKER_ROLE(), address(rebalancer));
@@ -703,7 +724,7 @@ contract FundManagerTest is Test {
             outAddressList: outAddressList,
             inAmount: 100000000,
             outAmount: 98168567,
-            deadline: 1719484491,
+            deadline: block.timestamp + 60,
             requester: ap
         });
         bytes32 orderHash = keccak256(abi.encode(order));

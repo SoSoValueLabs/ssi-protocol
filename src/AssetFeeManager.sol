@@ -9,9 +9,13 @@ import {Utils} from './Utils.sol';
 contract AssetFeeManager is AssetController, IAssetFeeManager {
     Request[] burnFeeRequests;
 
+    address oldFeeManagerAddress;
+    uint256 oldBurnFeeRequestCnt;
+
     event AddBurnFeeRequest(uint nonce);
     event RejectBurnFeeRequest(uint nonce);
     event ConfirmBurnFeeRequest(uint nonce);
+    event MigrateFrom(address oldFeeManagerAddress, uint256 oldBurnFeeRequestCnt);
 
     function setFee(uint256 assetID, uint256 fee) external onlyOwner {
         IAssetFactory factory = IAssetFactory(factoryAddress);
@@ -31,11 +35,23 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
     }
 
     function getBurnFeeRequestLength() external view returns (uint256) {
-        return burnFeeRequests.length;
+        return burnFeeRequests.length + oldBurnFeeRequestCnt;
     }
 
     function getBurnFeeRequest(uint256 nonce) external view returns (Request memory) {
-        return burnFeeRequests[nonce];
+        if (nonce < oldBurnFeeRequestCnt) {
+            return IAssetFeeManager(oldFeeManagerAddress).getBurnFeeRequest(nonce);
+        }
+        return burnFeeRequests[_internalBurnFeeNonce(nonce)];
+    }
+
+    function _internalBurnFeeNonce(uint256 nonce) internal view returns (uint256) {
+        require(nonce >= oldBurnFeeRequestCnt, "old nonce");
+        return nonce - oldBurnFeeRequestCnt;
+    }
+
+    function _externalBurnFeeNonce(uint256 nonce) internal view returns (uint256) {
+        return nonce + oldBurnFeeRequestCnt;
     }
 
     function addBurnFeeRequest(uint256 assetID, OrderInfo memory orderInfo) external onlyOwner returns (uint256) {
@@ -66,12 +82,13 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
             issueFee: 0
         }));
         assetToken.lockBurnFee();
-        emit AddBurnFeeRequest(burnFeeRequests.length - 1);
-        return burnFeeRequests.length - 1;
+        emit AddBurnFeeRequest(_externalBurnFeeNonce(burnFeeRequests.length - 1));
+        return _externalBurnFeeNonce(burnFeeRequests.length - 1);
     }
 
     function rejectBurnFeeRequest(uint nonce) external onlyOwner {
-        require(nonce < burnFeeRequests.length);
+        nonce = _internalBurnFeeNonce(nonce);
+        require(nonce < burnFeeRequests.length, "nonce too large");
         Request memory burnFeeRequest = burnFeeRequests[nonce];
         require(burnFeeRequest.status == RequestStatus.PENDING);
         ISwap swap = ISwap(burnFeeRequest.swapAddress);
@@ -80,11 +97,12 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         IAssetToken assetToken = IAssetToken(burnFeeRequest.assetTokenAddress);
         assetToken.unlockBurnFee();
         burnFeeRequests[nonce].status = RequestStatus.REJECTED;
-        emit RejectBurnFeeRequest(nonce);
+        emit RejectBurnFeeRequest(_externalBurnFeeNonce(nonce));
     }
 
     function confirmBurnFeeRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external onlyOwner {
-        require(nonce < burnFeeRequests.length);
+        nonce = _internalBurnFeeNonce(nonce);
+        require(nonce < burnFeeRequests.length, "nonce too large");
         Request memory burnFeeRequest = burnFeeRequests[nonce];
         checkRequestOrderInfo(burnFeeRequest, orderInfo);
         require(burnFeeRequest.status == RequestStatus.PENDING);
@@ -98,22 +116,15 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         assetToken.burnFeeTokenset(sellTokenset);
         burnFeeRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockBurnFee();
-        emit ConfirmBurnFeeRequest(nonce);
+        emit ConfirmBurnFeeRequest(_externalBurnFeeNonce(nonce));
     }
 
-    function migrateFrom(address oldFeeManagerAddress, uint256 maxRequest) external onlyOwner {
-        require(oldFeeManagerAddress != address(0), "old feeManager is zero address");
-        IAssetFeeManager feeManager = IAssetFeeManager(oldFeeManagerAddress);
-        require(factoryAddress == feeManager.factoryAddress(), "not the same factory");
-        // burnFeeRequests
-        uint256 burnFeeRequestCnt = feeManager.getBurnFeeRequestLength();
-        uint256 curBurnFeeRequestCnt = burnFeeRequests.length;
-        uint256 toBurnFeeRequestCnt = curBurnFeeRequestCnt + maxRequest;
-        if (toBurnFeeRequestCnt > burnFeeRequestCnt) {
-            toBurnFeeRequestCnt = burnFeeRequestCnt;
-        }
-        for (uint256 nonce = curBurnFeeRequestCnt; nonce < toBurnFeeRequestCnt; nonce++) {
-            burnFeeRequests.push(feeManager.getBurnFeeRequest(nonce));
-        }
+    function migrateFrom(address oldFeeManagerAddress_) external onlyOwner {
+        require(oldFeeManagerAddress_ != address(0), "old feeManager is zero address");
+        IAssetFeeManager oldFeeManager = IAssetFeeManager(oldFeeManagerAddress_);
+        require(IPausable(oldFeeManagerAddress_).paused(), "old fee manager is not paused");
+        oldFeeManagerAddress = oldFeeManagerAddress_;
+        oldBurnFeeRequestCnt = oldFeeManager.getBurnFeeRequestLength();
+        emit MigrateFrom(oldFeeManagerAddress, oldBurnFeeRequestCnt);
     }
 }

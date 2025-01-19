@@ -31,16 +31,21 @@ contract AssetIssuer is AssetController, IAssetIssuer {
     mapping(address => mapping(address => uint256)) public claimables;
     mapping(address => uint256) public tokenClaimables;
 
+    address oldIssuerAddress;
+    uint256 oldMintRequestCnt;
+    uint256 oldRedeemRequestCnt;
+
     event SetIssueAmountRange(uint indexed assetID, uint min, uint max);
     event SetIssueFee(uint indexed assetID, uint issueFee);
     event AddParticipant(uint indexed assetID, address participant);
     event RemoveParticipant(uint indexed assetID, address participant);
     event AddMintRequest(uint nonce);
-    event RejectMintRequest(uint nonce);
+    event RejectMintRequest(uint nonce, bool force);
     event ConfirmMintRequest(uint nonce);
     event AddRedeemRequest(uint nonce);
     event RejectRedeemRequest(uint nonce);
     event ConfirmRedeemRequest(uint nonce, bool force);
+    event MigrateFrom(address oldIssuerAddress, uint256 oldMintRequestCnt, uint256 oldRedeemRequestCnt);
 
     function getIssueAmountRange(uint256 assetID) external view returns (Range memory) {
         require(_minAmounts.contains(assetID) && _maxAmounts.contains(assetID), "issue amount range not set");
@@ -70,11 +75,23 @@ contract AssetIssuer is AssetController, IAssetIssuer {
 
     // mint
     function getMintRequestLength() external view returns (uint256) {
-        return mintRequests.length;
+        return mintRequests.length + oldMintRequestCnt;
     }
 
     function getMintRequest(uint256 nonce) external view returns (Request memory) {
-        return mintRequests[nonce];
+        if (nonce < oldMintRequestCnt) {
+            return IAssetIssuer(oldIssuerAddress).getMintRequest(nonce);
+        }
+        return mintRequests[_internalMintNonce(nonce)];
+    }
+
+    function _internalMintNonce(uint256 nonce) internal view returns (uint256) {
+        require(nonce >= oldMintRequestCnt, "old nonce");
+        return nonce - oldMintRequestCnt;
+    }
+
+    function _externalMintNonce(uint256 nonce) internal view returns (uint256) {
+        return nonce + oldMintRequestCnt;
     }
 
     function addMintRequest(uint256 assetID, OrderInfo memory orderInfo, uint256 maxIssueFee) external whenNotPaused returns (uint) {
@@ -120,11 +137,12 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             issueFee: issueFee
         }));
         assetToken.lockIssue();
-        emit AddMintRequest(mintRequests.length-1);
-        return mintRequests.length-1;
+        emit AddMintRequest(_externalMintNonce(mintRequests.length - 1));
+        return _externalMintNonce(mintRequests.length - 1);
     }
 
     function rejectMintRequest(uint nonce, OrderInfo memory orderInfo, bool force) external onlyOwner {
+        nonce = _internalMintNonce(nonce);
         require(nonce < mintRequests.length);
         Request memory mintRequest = mintRequests[nonce];
         checkRequestOrderInfo(mintRequest, orderInfo);
@@ -153,10 +171,11 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         IAssetToken assetToken = IAssetToken(mintRequest.assetTokenAddress);
         assetToken.unlockIssue();
         mintRequests[nonce].status = RequestStatus.REJECTED;
-        emit RejectMintRequest(nonce);
+        emit RejectMintRequest(_externalMintNonce(nonce), force);
     }
 
     function confirmMintRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external onlyOwner {
+        nonce = _internalMintNonce(nonce);
         require(nonce < mintRequests.length);
         Request memory mintRequest = mintRequests[nonce];
         checkRequestOrderInfo(mintRequest, orderInfo);
@@ -189,17 +208,29 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         assetToken.mint(mintRequest.requester, mintRequest.amount);
         mintRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockIssue();
-        emit ConfirmMintRequest(nonce);
+        emit ConfirmMintRequest(_externalMintNonce(nonce));
     }
 
     // redeem
 
     function getRedeemRequestLength() external view returns (uint256) {
-        return redeemRequests.length;
+        return redeemRequests.length + oldRedeemRequestCnt;
     }
 
     function getRedeemRequest(uint256 nonce) external view returns (Request memory) {
-        return redeemRequests[nonce];
+        if (nonce < oldRedeemRequestCnt) {
+            return IAssetIssuer(oldIssuerAddress).getRedeemRequest(nonce);
+        }
+        return redeemRequests[_internalRedeemNonce(nonce)];
+    }
+
+    function _internalRedeemNonce(uint256 nonce) internal view returns (uint256) {
+        require(nonce >= oldRedeemRequestCnt, "old nonce");
+        return nonce - oldRedeemRequestCnt;
+    }
+
+    function _externalRedeemNonce(uint256 nonce) internal view returns (uint256) {
+        return nonce + oldRedeemRequestCnt;
     }
 
     function addRedeemRequest(uint256 assetID, OrderInfo memory orderInfo, uint256 maxIssueFee) external whenNotPaused returns (uint256) {
@@ -241,11 +272,12 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             issueFee: _issueFees.get(assetID)
         }));
         assetToken.lockIssue();
-        emit AddRedeemRequest(redeemRequests.length - 1);
-        return redeemRequests.length - 1;
+        emit AddRedeemRequest(_externalRedeemNonce(redeemRequests.length - 1));
+        return _externalRedeemNonce(redeemRequests.length - 1);
     }
 
     function rejectRedeemRequest(uint nonce) external onlyOwner {
+        nonce = _internalRedeemNonce(nonce);
         require(nonce < redeemRequests.length, "nonce too large");
         Request memory redeemRequest = redeemRequests[nonce];
         require(redeemRequest.status == RequestStatus.PENDING, "redeem request is not pending");
@@ -257,11 +289,12 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         assetToken.safeTransfer(redeemRequest.requester, redeemRequest.amount);
         redeemRequests[nonce].status = RequestStatus.REJECTED;
         assetToken.unlockIssue();
-        emit RejectRedeemRequest(nonce);
+        emit RejectRedeemRequest(_externalRedeemNonce(nonce));
     }
 
     function confirmRedeemRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs, bool force) external onlyOwner {
-        require(nonce < redeemRequests.length);
+        nonce = _internalRedeemNonce(nonce);
+        require(nonce < redeemRequests.length, "nonce too large");
         Request memory redeemRequest = redeemRequests[nonce];
         checkRequestOrderInfo(redeemRequest, orderInfo);
         require(redeemRequest.status == RequestStatus.PENDING);
@@ -292,7 +325,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         assetToken.burn(redeemRequest.amount);
         redeemRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockIssue();
-        emit ConfirmRedeemRequest(nonce, force);
+        emit ConfirmRedeemRequest(_externalRedeemNonce(nonce), force);
     }
 
     function isParticipant(uint256 assetID, address participant) external view returns (bool) {
@@ -365,55 +398,13 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         IERC20(token).safeTransfer(msg.sender, amount);
     }
 
-    function migrateFrom(address oldIssuerAddress, uint256 maxParticipants, uint256 maxRequest) external onlyOwner {
-        require(oldIssuerAddress != address(0), "old issuer is zero address");
-        IAssetIssuer issuer = IAssetIssuer(oldIssuerAddress);
-        require(factoryAddress == issuer.factoryAddress(), "not the same factory");
-        IAssetFactory factory = IAssetFactory(factoryAddress);
-        uint256[] memory assetIDs = factory.getAssetIDs();
-        for (uint i = 0; i < assetIDs.length; i++) {
-            // range
-            Range memory issueAmountRange = issuer.getIssueAmountRange(assetIDs[i]);
-            if (!_minAmounts.contains(assetIDs[i])) {
-                _minAmounts.set(assetIDs[i], issueAmountRange.min);
-            }
-            if (!_maxAmounts.contains(assetIDs[i])) {
-                _maxAmounts.set(assetIDs[i], issueAmountRange.max);
-            }
-            // issue fee
-            if (!_issueFees.contains(assetIDs[i])) {
-                _issueFees.set(assetIDs[i], issuer.getIssueFee(assetIDs[i]));
-            }
-            // participants
-            uint256 participantCnt = issuer.getParticipantLength(assetIDs[i]);
-            uint256 curParticipantCnt = _participants[assetIDs[i]].length();
-            uint256 toParticipantCnt = curParticipantCnt + maxParticipants;
-            if (toParticipantCnt > participantCnt) {
-                toParticipantCnt = participantCnt;
-            }
-            for (uint256 idx = curParticipantCnt; idx < toParticipantCnt; idx++) {
-                _participants[assetIDs[i]].add(issuer.getParticipant(assetIDs[i], idx));
-            }
-        }
-        // mintRequests
-        uint256 mintRequestCnt = issuer.getMintRequestLength();
-        uint256 curMintRequestCnt = mintRequests.length;
-        uint256 toMintRequestCnt = curMintRequestCnt + maxRequest;
-        if (toMintRequestCnt > mintRequestCnt) {
-            toMintRequestCnt = mintRequestCnt;
-        }
-        for (uint256 nonce = curMintRequestCnt; nonce < toMintRequestCnt; nonce++) {
-            mintRequests.push(issuer.getMintRequest(nonce));
-        }
-        // redeemRequests
-        uint256 redeemRequestCnt = issuer.getRedeemRequestLength();
-        uint256 curRedeemRequestCnt = redeemRequests.length;
-        uint256 toRedeemRequestCnt = curRedeemRequestCnt + maxRequest;
-        if (toRedeemRequestCnt > redeemRequestCnt) {
-            toRedeemRequestCnt = redeemRequestCnt;
-        }
-        for (uint256 nonce = curRedeemRequestCnt; nonce < toRedeemRequestCnt; nonce++) {
-            redeemRequests.push(issuer.getRedeemRequest(nonce));
-        }
+    function migrateFrom(address oldIssuerAddress_) external onlyOwner {
+        require(oldIssuerAddress_ != address(0), "old issuer is zero address");
+        IAssetIssuer oldIssuer = IAssetIssuer(oldIssuerAddress_);
+        require(IPausable(oldIssuerAddress_).paused(), "old issuer is not paused");
+        oldIssuerAddress = oldIssuerAddress_;
+        oldMintRequestCnt = oldIssuer.getMintRequestLength();
+        oldRedeemRequestCnt = oldIssuer.getRedeemRequestLength();
+        emit MigrateFrom(oldIssuerAddress, oldMintRequestCnt, oldRedeemRequestCnt);
     }
 }

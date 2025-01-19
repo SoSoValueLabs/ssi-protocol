@@ -31,6 +31,9 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     EnumerableSet.Bytes32Set whiteListTokenHashs;
     mapping(bytes32 => Token) public whiteListTokens;
 
+    address oldSwapAddress;
+    uint256 oldOrderHashCnt;
+
     event AddSwapRequest(address indexed taker, bool inByContract, bool outByContract, OrderInfo orderInfo);
     event MakerConfirmSwapRequest(address indexed maker, bytes32 orderHash);
     event ConfirmSwapRequest(address indexed taker, bytes32 orderHash);
@@ -41,6 +44,7 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     event ForceCancelSwapRequest(bytes32 orderHash);
     event AddWhiteListToken(Token token);
     event RemoveWhiteListToken(Token token);
+    event MigrateFrom(address oldSwapAddress, uint256 oldOrderHashCnt);
 
     function initialize(
         address owner,
@@ -74,7 +78,7 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
         if (!SignatureChecker.isValidSignatureNow(orderInfo.order.maker, orderHash, orderInfo.orderSign)) {
             return 3;
         }
-        if (orderHashs.contains(orderHash)) {
+        if (orderHashs.contains(orderHash) || oldSwapAddress != address(0) && ISwap(oldSwapAddress).getSwapRequest(orderHash).status != SwapRequestStatus.NONE) {
             return 4;
         }
         if (orderInfo.order.inAddressList.length != orderInfo.order.inTokenset.length) {
@@ -112,17 +116,21 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
         require(orderInfo.orderHash == keccak256(abi.encode(orderInfo.order)), "order hash invalid");
     }
 
-    function getOrderHashs() external view returns (bytes32[] memory) {
-        return orderHashs.values();
-    }
-
     function getOrderHashLength() external view returns (uint256) {
-        return orderHashs.length();
+        return orderHashs.length() + oldOrderHashCnt;
     }
 
     function getOrderHash(uint256 idx) external view returns (bytes32) {
-        require(idx < orderHashs.length(), "out of range");
-        return orderHashs.at(idx);
+        require(idx < orderHashs.length() + oldOrderHashCnt, "out of range");
+        if (idx < oldOrderHashCnt) {
+            return ISwap(oldSwapAddress).getOrderHash(idx);
+        }
+        return orderHashs.at(_internalOrderHashIdx(idx));
+    }
+
+    function _internalOrderHashIdx(uint256 idx) internal view returns (uint256) {
+        require(idx >= oldOrderHashCnt, "old idx");
+        return idx - oldOrderHashCnt;
     }
 
     function checkTokenset(Token[] memory tokenset, string[] memory addressList) internal view {
@@ -156,7 +164,13 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     }
 
     function getSwapRequest(bytes32 orderHash) external view returns (SwapRequest memory) {
-        return swapRequests[orderHash];
+        SwapRequest memory swapRequest;
+        if (orderHashs.contains(orderHash)) {
+            swapRequest = swapRequests[orderHash];
+        } else if (oldSwapAddress != address(0)) {
+            swapRequest = ISwap(oldSwapAddress).getSwapRequest(orderHash);
+        }
+        return swapRequest;
     }
 
     function cancelSwapRequest(OrderInfo memory orderInfo) external onlyRole(TAKER_ROLE) whenNotPaused {
@@ -305,62 +319,11 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
         return whiteListTokens[whiteListTokenHashs.at(nonce)];
     }
 
-    function migrateFrom(address oldSwapAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(oldSwapAddress != address(0), "old swap is zero address");
-        ISwap oldSwap = ISwap(oldSwapAddress);
-        // whitelist token
-        if (whiteListTokenHashs.length() == 0) {
-            Token[] memory tokens = oldSwap.getWhiteListTokens();
-            for (uint i = 0; i < tokens.length; i++) {
-                bytes32 tokenHash = Utils.calcTokenHash(tokens[i]);
-                whiteListTokenHashs.add(tokenHash);
-                whiteListTokens[tokenHash].chain = tokens[i].chain;
-                whiteListTokens[tokenHash].symbol = tokens[i].symbol;
-                whiteListTokens[tokenHash].addr = tokens[i].addr;
-                whiteListTokens[tokenHash].decimals = tokens[i].decimals;
-            }
-        }
-        // taker addresses
-        if (takerReceivers.length == 0 && takerSenders.length == 0) {
-            (string[] memory takerReceivers_, string[] memory takerSenders_) = oldSwap.getTakerAddresses();
-            for (uint i = 0; i < takerReceivers_.length; i++) {
-                takerReceivers.push(takerReceivers_[i]);
-                outWhiteAddresses[takerReceivers[i]] = true;
-            }
-            for (uint i = 0; i < takerSenders_.length; i++) {
-                takerSenders.push(takerSenders_[i]);
-            }
-        }
-    }
-
-    function migrateSwapRequestFrom(address oldSwapAddress, uint256 maxRequest) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(oldSwapAddress != address(0), "old swap is zero address");
-        ISwap oldSwap = ISwap(oldSwapAddress);
-        // swap requests
-        uint256 swapRequestCnt = oldSwap.getOrderHashLength();
-        uint256 curSwapRequestCnt = orderHashs.length();
-        uint256 toSwapRequestCnt = curSwapRequestCnt + maxRequest;
-        if (toSwapRequestCnt > swapRequestCnt) {
-            toSwapRequestCnt = swapRequestCnt;
-        }
-        for (uint256 idx = curSwapRequestCnt; idx < toSwapRequestCnt; idx++) {
-            bytes32 orderHash = oldSwap.getOrderHash(idx);
-            orderHashs.add(orderHash);
-            SwapRequest memory swapRequest = oldSwap.getSwapRequest(orderHash);
-            bytes[] memory inTxHashs = swapRequest.inTxHashs;
-            for (uint i = 0; i < inTxHashs.length; i++) {
-                swapRequests[orderHash].inTxHashs.push(inTxHashs[i]);
-            }
-            bytes[] memory outTxHashs = swapRequest.outTxHashs;
-            for (uint i = 0; i < outTxHashs.length; i++) {
-                swapRequests[orderHash].outTxHashs.push(outTxHashs[i]);
-            }
-            swapRequests[orderHash].status = swapRequest.status;
-            swapRequests[orderHash].requester = swapRequest.requester;
-            swapRequests[orderHash].inByContract = swapRequest.inByContract;
-            swapRequests[orderHash].outByContract = swapRequest.outByContract;
-            swapRequests[orderHash].blocknumber = swapRequest.blocknumber;
-            swapRequests[orderHash].requestTimestamp = swapRequest.requestTimestamp;
-        }
+    function migrateFrom(address oldSwapAddress_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(oldSwapAddress_ != address(0), "old swap is zero address");
+        require(IPausable(oldSwapAddress_).paused(), "old swap is not paused");
+        oldSwapAddress = oldSwapAddress_;
+        oldOrderHashCnt = ISwap(oldSwapAddress).getOrderHashLength();
+        emit MigrateFrom(oldSwapAddress, oldOrderHashCnt);
     }
 }
