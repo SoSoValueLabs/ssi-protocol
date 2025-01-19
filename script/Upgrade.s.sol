@@ -19,12 +19,8 @@ contract UpgradeScript is Script {
     function setUp() public {}
 
     function run() public {
-        address owner = vm.envAddress("OWNER");
-        string memory chain = vm.envString("CHAIN_CODE");
         string memory referenceBuildInfoDir = vm.envString("REFER_BUILD_DIR");
         vm.startBroadcast();
-        // controller
-        Swap swap = new Swap(owner, chain);
         // impl
         Options memory options;
         options.referenceBuildInfoDir = referenceBuildInfoDir;
@@ -46,9 +42,9 @@ contract UpgradeScript is Script {
         address rebalancerImpl = Upgrades.deployImplementation("AssetRebalancer.sol:AssetRebalancer", options);
         options.referenceContract = "build-info-v1:AssetFeeManager";
         address feeManagerImpl = Upgrades.deployImplementation("AssetFeeManager.sol:AssetFeeManager", options);
+        options.referenceContract = "build-info-v1:Swap";
+        address swapImpl = Upgrades.deployImplementation("Swap.sol:Swap", options);
         vm.stopBroadcast();
-        // controller
-        console.log(string.concat("swap=", vm.toString(address(swap))));
         // impl
         console.log(string.concat("issuerImpl=", vm.toString(address(issuerImpl))));
         console.log(string.concat("rebalancerImpl=", vm.toString(address(rebalancerImpl))));
@@ -59,5 +55,6 @@ contract UpgradeScript is Script {
         console.log(string.concat("stakeFactoryImpl=", vm.toString(address(stakeFactoryImpl))));
         console.log(string.concat("assetLockingImpl=", vm.toString(address(assetLockingImpl))));
         console.log(string.concat("uSSIImpl=", vm.toString(address(uSSIImpl))));
+        console.log(string.concat("swapImpl=", vm.toString(address(swapImpl))));
     }
 }

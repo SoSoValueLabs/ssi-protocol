@@ -37,6 +37,7 @@ contract UpgradeTest is Test {
     AssetIssuer issuer;
     AssetFeeManager feeManager;
     AssetRebalancer rebalancer;
+    Swap swap;
 
     function getAsset() public view returns (Asset memory) {
         Token[] memory tokenset_ = new Token[](1);
@@ -57,7 +58,10 @@ contract UpgradeTest is Test {
     }
 
     function setUp() public {
-        Swap swap = new Swap(owner, chain);
+        swap = Swap(address(new ERC1967Proxy(
+            address(new Swap()),
+            abi.encodeCall(Swap.initialize, (owner, chain)))
+        ));
         AssetToken tokenImpl = new AssetToken();
         AssetFactory factoryImpl = new AssetFactory();
         factory = AssetFactory(address(new ERC1967Proxy(
@@ -174,6 +178,10 @@ contract UpgradeTest is Test {
         // upgrade feeManager
         address feeManagerImpl = address(new AssetFeeManager());
         feeManager.upgradeToAndCall(feeManagerImpl, new bytes(0));
+        assertEq(Upgrades.getImplementationAddress(address(feeManager)), feeManagerImpl);
+        // upgrade swap
+        address swapImpl = address(new Swap());
+        swap.upgradeToAndCall(swapImpl, new bytes(0));
         assertEq(Upgrades.getImplementationAddress(address(feeManager)), feeManagerImpl);
         vm.stopPrank();
     }

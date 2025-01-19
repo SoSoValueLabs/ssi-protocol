@@ -140,6 +140,7 @@ interface ISwap is IAccessControl {
     function confirmSwapRequest(OrderInfo memory orderInfo, bytes[] memory inTxHashs) external;
     function setTakerAddresses(string[] memory takerReceivers_, string[] memory takerSenders_) external;
     function getTakerAddresses() external view returns (string[] memory receivers, string[] memory senders);
+    function getWhiteListTokens() external view returns (Token[] memory tokens);
 }
 
 interface IAssetController {

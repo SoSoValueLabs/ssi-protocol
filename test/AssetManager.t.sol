@@ -32,7 +32,10 @@ contract FundManagerTest is Test {
 
     function setUp() public {
         vm.startPrank(owner);
-        swap = new Swap(owner, "SETH");
+        swap = Swap(address(new ERC1967Proxy(
+            address(new Swap()),
+            abi.encodeCall(Swap.initialize, (owner, "SETH")))
+        ));
         tokenImpl = new AssetToken();
         factoryImpl = new AssetFactory();
         address factoryAddress = address(new ERC1967Proxy(

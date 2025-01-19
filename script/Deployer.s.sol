@@ -27,7 +27,11 @@ contract DeployerScript is Script {
         vm.startBroadcast();
         address factory;
         {
-            Swap swap = new Swap(owner, chain);
+            Swap swapImpl = new Swap();
+            address swap = address(new ERC1967Proxy(
+                address(swapImpl),
+                abi.encodeCall(Swap.initialize, (owner, chain))
+            ));
             AssetToken tokenImpl = new AssetToken();
             AssetFactory factoryImpl = new AssetFactory();
             factory = address(new ERC1967Proxy(
@@ -36,6 +40,7 @@ contract DeployerScript is Script {
             ));
             console.log(string.concat("tokenImpl=", vm.toString(address(tokenImpl))));
             console.log(string.concat("factoryImpl=", vm.toString(address(factoryImpl))));
+            console.log(string.concat("swapImpl=", vm.toString(address(swapImpl))));
             console.log(string.concat("swap=", vm.toString(address(swap))));
             console.log(string.concat("factory=", vm.toString(address(factory))));
         }

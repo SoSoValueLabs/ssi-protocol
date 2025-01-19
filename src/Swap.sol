@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.25;
 import './Interface.sol';
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Utils} from './Utils.sol';
 
-contract Swap is AccessControl, Pausable, ISwap {
+contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessControlUpgradeable, ISwap {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
@@ -40,10 +42,18 @@ contract Swap is AccessControl, Pausable, ISwap {
     event AddWhiteListToken(Token token);
     event RemoveWhiteListToken(Token token);
 
-    constructor(address owner, string memory chain_) {
+    function initialize(
+        address owner,
+        string memory chain_
+    ) public initializer {
+        __UUPSUpgradeable_init();
+        __AccessControl_init();
+        __Pausable_init();
         _grantRole(DEFAULT_ADMIN_ROLE, owner);
         chain = chain_;
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
         _pause();
@@ -293,5 +303,64 @@ contract Swap is AccessControl, Pausable, ISwap {
 
     function getWhiteListToken(uint256 nonce) external view returns (Token memory token) {
         return whiteListTokens[whiteListTokenHashs.at(nonce)];
+    }
+
+    function migrateFrom(address oldSwapAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(oldSwapAddress != address(0), "old swap is zero address");
+        ISwap oldSwap = ISwap(oldSwapAddress);
+        // whitelist token
+        if (whiteListTokenHashs.length() == 0) {
+            Token[] memory tokens = oldSwap.getWhiteListTokens();
+            for (uint i = 0; i < tokens.length; i++) {
+                bytes32 tokenHash = Utils.calcTokenHash(tokens[i]);
+                whiteListTokenHashs.add(tokenHash);
+                whiteListTokens[tokenHash].chain = tokens[i].chain;
+                whiteListTokens[tokenHash].symbol = tokens[i].symbol;
+                whiteListTokens[tokenHash].addr = tokens[i].addr;
+                whiteListTokens[tokenHash].decimals = tokens[i].decimals;
+            }
+        }
+        // taker addresses
+        if (takerReceivers.length == 0 && takerSenders.length == 0) {
+            (string[] memory takerReceivers_, string[] memory takerSenders_) = oldSwap.getTakerAddresses();
+            for (uint i = 0; i < takerReceivers_.length; i++) {
+                takerReceivers.push(takerReceivers_[i]);
+                outWhiteAddresses[takerReceivers[i]] = true;
+            }
+            for (uint i = 0; i < takerSenders_.length; i++) {
+                takerSenders.push(takerSenders_[i]);
+            }
+        }
+    }
+
+    function migrateSwapRequestFrom(address oldSwapAddress, uint256 maxRequest) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(oldSwapAddress != address(0), "old swap is zero address");
+        ISwap oldSwap = ISwap(oldSwapAddress);
+        // swap requests
+        uint256 swapRequestCnt = oldSwap.getOrderHashLength();
+        uint256 curSwapRequestCnt = orderHashs.length();
+        uint256 toSwapRequestCnt = curSwapRequestCnt + maxRequest;
+        if (toSwapRequestCnt > swapRequestCnt) {
+            toSwapRequestCnt = swapRequestCnt;
+        }
+        for (uint256 idx = curSwapRequestCnt; idx < toSwapRequestCnt; idx++) {
+            bytes32 orderHash = oldSwap.getOrderHash(idx);
+            orderHashs.add(orderHash);
+            SwapRequest memory swapRequest = oldSwap.getSwapRequest(orderHash);
+            bytes[] memory inTxHashs = swapRequest.inTxHashs;
+            for (uint i = 0; i < inTxHashs.length; i++) {
+                swapRequests[orderHash].inTxHashs.push(inTxHashs[i]);
+            }
+            bytes[] memory outTxHashs = swapRequest.outTxHashs;
+            for (uint i = 0; i < outTxHashs.length; i++) {
+                swapRequests[orderHash].outTxHashs.push(outTxHashs[i]);
+            }
+            swapRequests[orderHash].status = swapRequest.status;
+            swapRequests[orderHash].requester = swapRequest.requester;
+            swapRequests[orderHash].inByContract = swapRequest.inByContract;
+            swapRequests[orderHash].outByContract = swapRequest.outByContract;
+            swapRequests[orderHash].blocknumber = swapRequest.blocknumber;
+            swapRequests[orderHash].requestTimestamp = swapRequest.requestTimestamp;
+        }
     }
 }
