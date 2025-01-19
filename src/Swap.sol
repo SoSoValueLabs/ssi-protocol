@@ -31,9 +31,6 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     EnumerableSet.Bytes32Set whiteListTokenHashs;
     mapping(bytes32 => Token) public whiteListTokens;
 
-    address oldSwapAddress;
-    uint256 oldOrderHashCnt;
-
     event AddSwapRequest(address indexed taker, bool inByContract, bool outByContract, OrderInfo orderInfo);
     event MakerConfirmSwapRequest(address indexed maker, bytes32 orderHash);
     event ConfirmSwapRequest(address indexed taker, bytes32 orderHash);
@@ -121,6 +118,10 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
         require(orderInfo.orderHash == keccak256(abi.encode(orderInfo.order)), "order hash invalid");
     }
 
+    function getOrderHashs() external view returns (bytes32[] memory) {
+        return orderHashs.values();
+    }
+
     function getOrderHashLength() external view returns (uint256) {
         return orderHashs.length();
     }
@@ -161,13 +162,7 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     }
 
     function getSwapRequest(bytes32 orderHash) external view returns (SwapRequest memory) {
-        SwapRequest memory swapRequest;
-        if (orderHashs.contains(orderHash)) {
-            swapRequest = swapRequests[orderHash];
-        } else if (oldSwapAddress != address(0)) {
-            swapRequest = ISwap(oldSwapAddress).getSwapRequest(orderHash);
-        }
-        return swapRequest;
+        return swapRequests[orderHash];
     }
 
     function cancelSwapRequest(OrderInfo memory orderInfo) external onlyRole(TAKER_ROLE) whenNotPaused {

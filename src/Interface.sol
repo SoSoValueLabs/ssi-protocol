@@ -146,11 +146,6 @@ interface IAssetController {
     function factoryAddress() external returns (address);
 }
 
-interface IPausable {
-    function pause() external;
-    function paused() external returns (bool);
-}
-
 interface IAssetIssuer is IAssetController {
     // mint
     function getMintRequestLength() external view returns (uint256);
