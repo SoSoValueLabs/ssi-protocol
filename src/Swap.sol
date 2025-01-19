@@ -83,7 +83,7 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
         if (!SignatureChecker.isValidSignatureNow(orderInfo.order.maker, orderHash, orderInfo.orderSign)) {
             return 3;
         }
-        if (orderHashs.contains(orderHash) || oldSwapAddress != address(0) && ISwap(oldSwapAddress).getSwapRequest(orderHash).status != SwapRequestStatus.NONE) {
+        if (orderHashs.contains(orderHash)) {
             return 4;
         }
         if (orderInfo.order.inAddressList.length != orderInfo.order.inTokenset.length) {
@@ -122,20 +122,12 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     }
 
     function getOrderHashLength() external view returns (uint256) {
-        return orderHashs.length() + oldOrderHashCnt;
+        return orderHashs.length();
     }
 
     function getOrderHash(uint256 idx) external view returns (bytes32) {
-        require(idx < orderHashs.length() + oldOrderHashCnt, "out of range");
-        if (idx < oldOrderHashCnt) {
-            return ISwap(oldSwapAddress).getOrderHash(idx);
-        }
-        return orderHashs.at(_internalOrderHashIdx(idx));
-    }
-
-    function _internalOrderHashIdx(uint256 idx) internal view returns (uint256) {
-        require(idx >= oldOrderHashCnt, "old idx");
-        return idx - oldOrderHashCnt;
+        require(idx < orderHashs.length(), "out of range");
+        return orderHashs.at(idx);
     }
 
     function checkTokenset(Token[] memory tokenset, string[] memory addressList) internal view {
@@ -322,13 +314,5 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
 
     function getWhiteListToken(uint256 nonce) external view returns (Token memory token) {
         return whiteListTokens[whiteListTokenHashs.at(nonce)];
-    }
-
-    function migrateFrom(address oldSwapAddress_) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(oldSwapAddress_ != address(0), "old swap is zero address");
-        require(IPausable(oldSwapAddress_).paused(), "old swap is not paused");
-        oldSwapAddress = oldSwapAddress_;
-        oldOrderHashCnt = ISwap(oldSwapAddress).getOrderHashLength();
-        emit MigrateFrom(oldSwapAddress, oldOrderHashCnt);
     }
 }
