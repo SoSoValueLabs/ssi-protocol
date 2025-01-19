@@ -41,7 +41,6 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     event ForceCancelSwapRequest(bytes32 orderHash);
     event AddWhiteListToken(Token token);
     event RemoveWhiteListToken(Token token);
-    event MigrateFrom(address oldSwapAddress, uint256 oldOrderHashCnt);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {

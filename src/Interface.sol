@@ -128,6 +128,7 @@ interface ISwap is IAccessControl {
     function TAKER_ROLE() external returns (bytes32);
     function MAKER_ROLE() external returns (bytes32);
     function checkOrderInfo(OrderInfo memory orderInfo) external view returns (uint);
+    function getOrderHashs() external view returns (bytes32[] memory);
     function getOrderHashLength() external view returns (uint256);
     function getOrderHash(uint256 idx) external view returns (bytes32);
     function getSwapRequest(bytes32 orderHash) external view returns (SwapRequest memory);
