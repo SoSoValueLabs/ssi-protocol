@@ -499,7 +499,7 @@ contract FundManagerTest is Test {
         // inToken.transfer(address(issuer), tokenAmount + feeAmount);
         // vm.stopPrank();
         vm.startPrank(owner);
-        issuer.rejectMintRequest(nonce, orderInfo);
+        issuer.rejectMintRequest(nonce, orderInfo, false);
         assertEq(inToken.balanceOf(ap), amountBeforeMint);
         assertTrue(issuer.getMintRequest(nonce).status == RequestStatus.REJECTED);
         assertTrue(swap.getSwapRequest(mintRequest.orderHash).status == SwapRequestStatus.REJECTED);
@@ -773,7 +773,7 @@ contract FundManagerTest is Test {
         SwapRequest memory swapRequest = swap.getSwapRequest(orderInfo.orderHash);
         assertTrue(swapRequest.status == SwapRequestStatus.CANCEL);
         vm.startPrank(owner);
-        issuer.rejectMintRequest(nonce, orderInfo);
+        issuer.rejectMintRequest(nonce, orderInfo, false);
         assertEq(inToken.balanceOf(ap), amountBeforeMint);
         assertTrue(issuer.getMintRequest(nonce).status == RequestStatus.REJECTED);
     }
@@ -800,7 +800,7 @@ contract FundManagerTest is Test {
         swap.makerRejectSwapRequest(orderInfo);
         vm.stopPrank();
         vm.startPrank(owner);
-        issuer.rejectMintRequest(nonce, orderInfo);
+        issuer.rejectMintRequest(nonce, orderInfo, false);
         issuer.withdraw(tokenAddresses);
         assertEq(WETH.balanceOf(owner), 10**18);
     }
@@ -847,6 +847,35 @@ contract FundManagerTest is Test {
         vm.startPrank(ap);
         issuer.claim(outTokenAddress);
         assertEq(outToken.balanceOf(ap), expectAmount - expectAmount * 10000 / 10**8);
+        vm.stopPrank();
+    }
+
+    function test_forceRejectMintRequest() public {
+        address assetTokenAddress = createAssetToken();
+        OrderInfo memory orderInfo = pmmQuoteMint();
+        MockToken inToken = MockToken(vm.parseAddress(orderInfo.order.inTokenset[0].addr));
+        (uint nonce, uint amountBeforeMint) = apAddMintRequest(assetTokenAddress, orderInfo);
+        uint amountAfterMint = inToken.balanceOf(ap);
+        Request memory mintRequest = issuer.getMintRequest(nonce);
+        vm.startPrank(pmm);
+        swap.makerRejectSwapRequest(orderInfo);
+        vm.stopPrank();
+        inToken.blockAccount(ap, true);
+        vm.startPrank(owner);
+        vm.expectRevert();
+        issuer.rejectMintRequest(nonce, orderInfo, false);
+        issuer.rejectMintRequest(nonce, orderInfo, true);
+        assertEq(inToken.balanceOf(ap), amountAfterMint);
+        assertTrue(issuer.getMintRequest(nonce).status == RequestStatus.REJECTED);
+        assertTrue(swap.getSwapRequest(mintRequest.orderHash).status == SwapRequestStatus.REJECTED);
+        address[] memory withdrawTokens = new address[](1);
+        withdrawTokens[0] = address(inToken);
+        issuer.withdraw(withdrawTokens);
+        vm.stopPrank();
+        inToken.blockAccount(ap, false);
+        vm.startPrank(ap);
+        issuer.claim(address(inToken));
+        assertEq(inToken.balanceOf(ap), amountBeforeMint);
         vm.stopPrank();
     }
 

@@ -124,7 +124,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         return mintRequests.length-1;
     }
 
-    function rejectMintRequest(uint nonce, OrderInfo memory orderInfo) external onlyOwner {
+    function rejectMintRequest(uint nonce, OrderInfo memory orderInfo, bool force) external onlyOwner {
         require(nonce < mintRequests.length);
         Request memory mintRequest = mintRequests[nonce];
         checkRequestOrderInfo(mintRequest, orderInfo);
@@ -143,7 +143,12 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             uint feeTokenAmount = inTokenAmount * mintRequest.issueFee / 10**feeDecimals;
             uint transferAmount = inTokenAmount + feeTokenAmount;
             require(inToken.balanceOf(address(this)) >= transferAmount, "not enough balance");
-            inToken.safeTransfer(mintRequest.requester, transferAmount);
+            if (!force) {
+                inToken.safeTransfer(mintRequest.requester, transferAmount);
+            } else {
+                claimables[tokenAddress][mintRequest.requester] += transferAmount;
+                tokenClaimables[tokenAddress] += transferAmount;
+            }
         }
         IAssetToken assetToken = IAssetToken(mintRequest.assetTokenAddress);
         assetToken.unlockIssue();

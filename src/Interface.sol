@@ -152,7 +152,7 @@ interface IAssetIssuer is IAssetController {
     function getMintRequestLength() external view returns (uint256);
     function getMintRequest(uint256 nonce) external view returns (Request memory);
     function addMintRequest(uint256 assetID, OrderInfo memory orderInfo, uint256 maxIssueFee) external returns (uint);
-    function rejectMintRequest(uint256 nonce, OrderInfo memory orderInfo) external;
+    function rejectMintRequest(uint256 nonce, OrderInfo memory orderInfo, bool force) external;
     function confirmMintRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external;
     // redeem
     function getRedeemRequestLength() external view returns (uint256);
