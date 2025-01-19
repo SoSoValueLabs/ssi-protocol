@@ -71,7 +71,7 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         }
         swap.addSwapRequest(orderInfo, false, true);
         burnFeeRequests.push(Request({
-            nonce: burnFeeRequests.length,
+            nonce: _externalBurnFeeNonce(burnFeeRequests.length),
             requester: msg.sender,
             assetTokenAddress: assetTokenAddress,
             amount: 0,

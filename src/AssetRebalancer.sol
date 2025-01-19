@@ -63,7 +63,7 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         require(!Utils.hasDuplicates(newTokenset), "duplicated tokens in new tokenset");
         swap.addSwapRequest(orderInfo, false, false);
         rebalanceRequests.push(Request({
-            nonce: rebalanceRequests.length,
+            nonce: _externalRebalanceNonce(rebalanceRequests.length),
             requester: msg.sender,
             assetTokenAddress: assetTokenAddress,
             amount: 0,

@@ -126,7 +126,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         }
         swap.addSwapRequest(orderInfo, true, false);
         mintRequests.push(Request({
-            nonce: mintRequests.length,
+            nonce: _externalMintNonce(mintRequests.length),
             requester: msg.sender,
             assetTokenAddress: assetTokenAddress,
             amount: order.outAmount,
@@ -143,7 +143,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
 
     function rejectMintRequest(uint nonce, OrderInfo memory orderInfo, bool force) external onlyOwner {
         nonce = _internalMintNonce(nonce);
-        require(nonce < mintRequests.length);
+        require(nonce < mintRequests.length, "nonce too large");
         Request memory mintRequest = mintRequests[nonce];
         checkRequestOrderInfo(mintRequest, orderInfo);
         require(mintRequest.status == RequestStatus.PENDING);
@@ -176,7 +176,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
 
     function confirmMintRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external onlyOwner {
         nonce = _internalMintNonce(nonce);
-        require(nonce < mintRequests.length);
+        require(nonce < mintRequests.length, "nonce too large");
         Request memory mintRequest = mintRequests[nonce];
         checkRequestOrderInfo(mintRequest, orderInfo);
         require(mintRequest.status == RequestStatus.PENDING);
@@ -261,7 +261,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         assetToken.safeTransferFrom(msg.sender, address(this), order.inAmount);
         swap.addSwapRequest(orderInfo, false, true);
         redeemRequests.push(Request({
-            nonce: redeemRequests.length,
+            nonce: _externalRedeemNonce(redeemRequests.length),
             requester: msg.sender,
             assetTokenAddress: assetTokenAddress,
             amount: order.inAmount,
