@@ -46,6 +46,11 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     event RemoveWhiteListToken(Token token);
     event MigrateFrom(address oldSwapAddress, uint256 oldOrderHashCnt);
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     function initialize(
         address owner,
         string memory chain_
