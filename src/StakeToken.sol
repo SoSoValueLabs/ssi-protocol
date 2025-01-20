@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import "forge-std/console.sol";
+// import "forge-std/console.sol";
 
 contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable {
     using SafeERC20 for IERC20;
@@ -93,7 +93,7 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
     }
 
     function setCooldown(uint48 cooldown_) external onlyOwner {
-        require(cooldown != cooldown, "cooldown not change");
+        require(cooldown != cooldown_, "cooldown not change");
         require(cooldown_ < MAX_COOLDOWN, "cooldown exceeds MAX_COOLDOWN");
         emit SetCooldown(cooldown, cooldown_);
         cooldown = cooldown_;

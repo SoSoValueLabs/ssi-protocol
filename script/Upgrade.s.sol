@@ -19,16 +19,8 @@ contract UpgradeScript is Script {
     function setUp() public {}
 
     function run() public {
-        address owner = vm.envAddress("OWNER");
-        string memory chain = vm.envString("CHAIN_CODE");
-        address factory = vm.envAddress("ASSET_FACTORY");
         string memory referenceBuildInfoDir = vm.envString("REFER_BUILD_DIR");
         vm.startBroadcast();
-        // controller
-        Swap swap = new Swap(owner, chain);
-        AssetIssuer issuer = new AssetIssuer(owner, address(factory));
-        AssetRebalancer rebalancer = new AssetRebalancer(owner, address(factory));
-        AssetFeeManager feeManager = new AssetFeeManager(owner, address(factory));
         // impl
         Options memory options;
         options.referenceBuildInfoDir = referenceBuildInfoDir;
@@ -44,18 +36,25 @@ contract UpgradeScript is Script {
         address assetLockingImpl = Upgrades.deployImplementation("AssetLocking.sol:AssetLocking", options);
         options.referenceContract = "build-info-v1:USSI";
         address uSSIImpl = Upgrades.deployImplementation("USSI.sol:USSI", options);
+        options.referenceContract = "build-info-v1:AssetIssuer";
+        address issuerImpl = Upgrades.deployImplementation("AssetIssuer.sol:AssetIssuer", options);
+        options.referenceContract = "build-info-v1:AssetRebalancer";
+        address rebalancerImpl = Upgrades.deployImplementation("AssetRebalancer.sol:AssetRebalancer", options);
+        options.referenceContract = "build-info-v1:AssetFeeManager";
+        address feeManagerImpl = Upgrades.deployImplementation("AssetFeeManager.sol:AssetFeeManager", options);
+        options.referenceContract = "build-info-v1:Swap";
+        address swapImpl = Upgrades.deployImplementation("Swap.sol:Swap", options);
         vm.stopBroadcast();
-        // controller
-        console.log(string.concat("swap=", vm.toString(address(swap))));
-        console.log(string.concat("issuer=", vm.toString(address(issuer))));
-        console.log(string.concat("rebalancer=", vm.toString(address(rebalancer))));
-        console.log(string.concat("feeManager=", vm.toString(address(feeManager))));
         // impl
+        console.log(string.concat("issuerImpl=", vm.toString(address(issuerImpl))));
+        console.log(string.concat("rebalancerImpl=", vm.toString(address(rebalancerImpl))));
+        console.log(string.concat("feeManagerImpl=", vm.toString(address(feeManagerImpl))));
         console.log(string.concat("tokenImpl=", vm.toString(address(tokenImpl))));
         console.log(string.concat("factoryImpl=", vm.toString(address(factoryImpl))));
         console.log(string.concat("stakeTokenImpl=", vm.toString(address(stakeTokenImpl))));
         console.log(string.concat("stakeFactoryImpl=", vm.toString(address(stakeFactoryImpl))));
         console.log(string.concat("assetLockingImpl=", vm.toString(address(assetLockingImpl))));
         console.log(string.concat("uSSIImpl=", vm.toString(address(uSSIImpl))));
+        console.log(string.concat("swapImpl=", vm.toString(address(swapImpl))));
     }
 }

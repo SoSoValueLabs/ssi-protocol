@@ -4,7 +4,7 @@ import "./Interface.sol";
 import {AssetController} from "./AssetController.sol";
 import {Utils} from './Utils.sol';
 
-import "forge-std/console.sol";
+// import "forge-std/console.sol";
 
 contract AssetFeeManager is AssetController, IAssetFeeManager {
     Request[] burnFeeRequests;
@@ -12,11 +12,6 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
     event AddBurnFeeRequest(uint nonce);
     event RejectBurnFeeRequest(uint nonce);
     event ConfirmBurnFeeRequest(uint nonce);
-
-    constructor(address owner, address factoryAddress_)
-        AssetController(owner, factoryAddress_) {
-
-    }
 
     function setFee(uint256 assetID, uint256 fee) external onlyOwner {
         IAssetFactory factory = IAssetFactory(factoryAddress);
@@ -76,7 +71,7 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
     }
 
     function rejectBurnFeeRequest(uint nonce) external onlyOwner {
-        require(nonce < burnFeeRequests.length);
+        require(nonce < burnFeeRequests.length, "nonce too large");
         Request memory burnFeeRequest = burnFeeRequests[nonce];
         require(burnFeeRequest.status == RequestStatus.PENDING);
         ISwap swap = ISwap(burnFeeRequest.swapAddress);
@@ -89,7 +84,7 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
     }
 
     function confirmBurnFeeRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external onlyOwner {
-        require(nonce < burnFeeRequests.length);
+        require(nonce < burnFeeRequests.length, "nonce too large");
         Request memory burnFeeRequest = burnFeeRequests[nonce];
         checkRequestOrderInfo(burnFeeRequest, orderInfo);
         require(burnFeeRequest.status == RequestStatus.PENDING);

@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.25;
 import './Interface.sol';
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Utils} from './Utils.sol';
 
-contract Swap is AccessControl, Pausable, ISwap {
+contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessControlUpgradeable, ISwap {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
@@ -40,10 +42,23 @@ contract Swap is AccessControl, Pausable, ISwap {
     event AddWhiteListToken(Token token);
     event RemoveWhiteListToken(Token token);
 
-    constructor(address owner, string memory chain_) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address owner,
+        string memory chain_
+    ) public initializer {
+        __UUPSUpgradeable_init();
+        __AccessControl_init();
+        __Pausable_init();
         _grantRole(DEFAULT_ADMIN_ROLE, owner);
         chain = chain_;
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
         _pause();

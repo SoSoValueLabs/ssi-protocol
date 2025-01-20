@@ -4,7 +4,7 @@ import "./Interface.sol";
 import {AssetController} from "./AssetController.sol";
 import {Utils} from './Utils.sol';
 
-import "forge-std/console.sol";
+// import "forge-std/console.sol";
 
 contract AssetRebalancer is AssetController, IAssetRebalancer {
     Request[] rebalanceRequests;
@@ -12,11 +12,6 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
     event AddRebalanceRequest(uint nonce);
     event RejectRebalanceRequest(uint nonce);
     event ConfirmRebalanceRequest(uint nonce);
-
-    constructor(address owner, address factoryAddress_)
-        AssetController(owner, factoryAddress_) {
-
-    }
 
     // rebalance
 
@@ -68,7 +63,7 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
     }
 
     function rejectRebalanceRequest(uint nonce) external onlyOwner {
-        require(nonce < rebalanceRequests.length);
+        require(nonce < rebalanceRequests.length, "nonce too large");
         Request memory rebalanceRequest = rebalanceRequests[nonce];
         require(rebalanceRequest.status == RequestStatus.PENDING);
         ISwap swap = ISwap(rebalanceRequest.swapAddress);
@@ -81,7 +76,7 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
     }
 
     function confirmRebalanceRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external onlyOwner {
-        require(nonce < rebalanceRequests.length);
+        require(nonce < rebalanceRequests.length, "nonce too large");
         Request memory rebalanceRequest = rebalanceRequests[nonce];
         checkRequestOrderInfo(rebalanceRequest, orderInfo);
         require(rebalanceRequest.status == RequestStatus.PENDING);

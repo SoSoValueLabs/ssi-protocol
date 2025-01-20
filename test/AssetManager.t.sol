@@ -15,8 +15,8 @@ import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {Test, console} from "forge-std/Test.sol";
 
 contract FundManagerTest is Test {
-    MockToken WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
-    MockToken WETH = new MockToken("Wrapped ETH", "WETH", 18);
+    MockToken WBTC;
+    MockToken WETH;
 
     address owner = vm.addr(0x1);
     address vault = vm.parseAddress("0xc9b6174bDF1deE9Ba42Af97855Da322b91755E63");
@@ -31,8 +31,13 @@ contract FundManagerTest is Test {
     AssetFactory factoryImpl;
 
     function setUp() public {
+        WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
+        WETH = new MockToken("Wrapped ETH", "WETH", 18);
         vm.startPrank(owner);
-        swap = new Swap(owner, "SETH");
+        swap = Swap(address(new ERC1967Proxy(
+            address(new Swap()),
+            abi.encodeCall(Swap.initialize, (owner, "SETH")))
+        ));
         tokenImpl = new AssetToken();
         factoryImpl = new AssetFactory();
         address factoryAddress = address(new ERC1967Proxy(
@@ -40,9 +45,18 @@ contract FundManagerTest is Test {
             abi.encodeCall(AssetFactory.initialize, (owner, vault, "SETH", address(tokenImpl)))
         ));
         factory = AssetFactory(factoryAddress);
-        issuer = new AssetIssuer(owner, address(factory));
-        rebalancer = new AssetRebalancer(owner, address(factory));
-        feeManager = new AssetFeeManager(owner, address(factory));
+        issuer = AssetIssuer(address(new ERC1967Proxy(
+            address(new AssetIssuer()),
+            abi.encodeCall(AssetController.initialize, (owner, address(factory)))
+        )));
+        rebalancer = AssetRebalancer(address(new ERC1967Proxy(
+            address(new AssetRebalancer()),
+            abi.encodeCall(AssetController.initialize, (owner, address(factory)))
+        )));
+        feeManager = AssetFeeManager(address(new ERC1967Proxy(
+            address(new AssetFeeManager()),
+            abi.encodeCall(AssetController.initialize, (owner, address(factory)))
+        )));
         swap.grantRole(swap.MAKER_ROLE(), pmm);
         swap.grantRole(swap.TAKER_ROLE(), address(issuer));
         swap.grantRole(swap.TAKER_ROLE(), address(rebalancer));
@@ -487,7 +501,7 @@ contract FundManagerTest is Test {
         // inToken.transfer(address(issuer), tokenAmount + feeAmount);
         // vm.stopPrank();
         vm.startPrank(owner);
-        issuer.rejectMintRequest(nonce, orderInfo);
+        issuer.rejectMintRequest(nonce, orderInfo, false);
         assertEq(inToken.balanceOf(ap), amountBeforeMint);
         assertTrue(issuer.getMintRequest(nonce).status == RequestStatus.REJECTED);
         assertTrue(swap.getSwapRequest(mintRequest.orderHash).status == SwapRequestStatus.REJECTED);
@@ -691,7 +705,7 @@ contract FundManagerTest is Test {
             outAddressList: outAddressList,
             inAmount: 100000000,
             outAmount: 98168567,
-            deadline: 1719484491,
+            deadline: block.timestamp + 60,
             requester: ap
         });
         bytes32 orderHash = keccak256(abi.encode(order));
@@ -761,7 +775,7 @@ contract FundManagerTest is Test {
         SwapRequest memory swapRequest = swap.getSwapRequest(orderInfo.orderHash);
         assertTrue(swapRequest.status == SwapRequestStatus.CANCEL);
         vm.startPrank(owner);
-        issuer.rejectMintRequest(nonce, orderInfo);
+        issuer.rejectMintRequest(nonce, orderInfo, false);
         assertEq(inToken.balanceOf(ap), amountBeforeMint);
         assertTrue(issuer.getMintRequest(nonce).status == RequestStatus.REJECTED);
     }
@@ -788,7 +802,7 @@ contract FundManagerTest is Test {
         swap.makerRejectSwapRequest(orderInfo);
         vm.stopPrank();
         vm.startPrank(owner);
-        issuer.rejectMintRequest(nonce, orderInfo);
+        issuer.rejectMintRequest(nonce, orderInfo, false);
         issuer.withdraw(tokenAddresses);
         assertEq(WETH.balanceOf(owner), 10**18);
     }
@@ -835,6 +849,35 @@ contract FundManagerTest is Test {
         vm.startPrank(ap);
         issuer.claim(outTokenAddress);
         assertEq(outToken.balanceOf(ap), expectAmount - expectAmount * 10000 / 10**8);
+        vm.stopPrank();
+    }
+
+    function test_forceRejectMintRequest() public {
+        address assetTokenAddress = createAssetToken();
+        OrderInfo memory orderInfo = pmmQuoteMint();
+        MockToken inToken = MockToken(vm.parseAddress(orderInfo.order.inTokenset[0].addr));
+        (uint nonce, uint amountBeforeMint) = apAddMintRequest(assetTokenAddress, orderInfo);
+        uint amountAfterMint = inToken.balanceOf(ap);
+        Request memory mintRequest = issuer.getMintRequest(nonce);
+        vm.startPrank(pmm);
+        swap.makerRejectSwapRequest(orderInfo);
+        vm.stopPrank();
+        inToken.blockAccount(ap, true);
+        vm.startPrank(owner);
+        vm.expectRevert();
+        issuer.rejectMintRequest(nonce, orderInfo, false);
+        issuer.rejectMintRequest(nonce, orderInfo, true);
+        assertEq(inToken.balanceOf(ap), amountAfterMint);
+        assertTrue(issuer.getMintRequest(nonce).status == RequestStatus.REJECTED);
+        assertTrue(swap.getSwapRequest(mintRequest.orderHash).status == SwapRequestStatus.REJECTED);
+        address[] memory withdrawTokens = new address[](1);
+        withdrawTokens[0] = address(inToken);
+        issuer.withdraw(withdrawTokens);
+        vm.stopPrank();
+        inToken.blockAccount(ap, false);
+        vm.startPrank(ap);
+        issuer.claim(address(inToken));
+        assertEq(inToken.balanceOf(ap), amountBeforeMint);
         vm.stopPrank();
     }
 

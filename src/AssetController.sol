@@ -1,16 +1,31 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.25;
 import './Interface.sol';
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
-contract AssetController is Ownable, Pausable, IAssetController {
+contract AssetController is Initializable, UUPSUpgradeable, OwnableUpgradeable, PausableUpgradeable, IAssetController {
     address public factoryAddress;
 
-    constructor(address owner, address factoryAddress_) Ownable(owner) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address owner_,
+        address factoryAddress_
+    ) public initializer {
+        __UUPSUpgradeable_init();
+        __Ownable_init(owner_);
+        __Pausable_init();
         require(factoryAddress_ != address(0), "factory is zero address");
         factoryAddress = factoryAddress_;
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     function pause() external onlyOwner {
         _pause();

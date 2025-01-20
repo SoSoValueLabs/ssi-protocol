@@ -7,7 +7,7 @@ import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Utils} from './Utils.sol';
 
-import "forge-std/console.sol";
+// import "forge-std/console.sol";
 
 contract AssetIssuer is AssetController, IAssetIssuer {
     using SafeERC20 for IERC20;
@@ -26,7 +26,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
     Request[] mintRequests;
     Request[] redeemRequests;
 
-    uint256 public feeDecimals = 8;
+    uint256 public constant feeDecimals = 8;
 
     mapping(address => mapping(address => uint256)) public claimables;
     mapping(address => uint256) public tokenClaimables;
@@ -36,15 +36,11 @@ contract AssetIssuer is AssetController, IAssetIssuer {
     event AddParticipant(uint indexed assetID, address participant);
     event RemoveParticipant(uint indexed assetID, address participant);
     event AddMintRequest(uint nonce);
-    event RejectMintRequest(uint nonce);
+    event RejectMintRequest(uint nonce, bool force);
     event ConfirmMintRequest(uint nonce);
     event AddRedeemRequest(uint nonce);
     event RejectRedeemRequest(uint nonce);
     event ConfirmRedeemRequest(uint nonce, bool force);
-
-    constructor(address owner, address factoryAddress_)
-        AssetController(owner, factoryAddress_) {
-    }
 
     function getIssueAmountRange(uint256 assetID) external view returns (Range memory) {
         require(_minAmounts.contains(assetID) && _maxAmounts.contains(assetID), "issue amount range not set");
@@ -124,12 +120,12 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             issueFee: issueFee
         }));
         assetToken.lockIssue();
-        emit AddMintRequest(mintRequests.length-1);
-        return mintRequests.length-1;
+        emit AddMintRequest(mintRequests.length - 1);
+        return mintRequests.length - 1;
     }
 
-    function rejectMintRequest(uint nonce, OrderInfo memory orderInfo) external onlyOwner {
-        require(nonce < mintRequests.length);
+    function rejectMintRequest(uint nonce, OrderInfo memory orderInfo, bool force) external onlyOwner {
+        require(nonce < mintRequests.length, "nonce too large");
         Request memory mintRequest = mintRequests[nonce];
         checkRequestOrderInfo(mintRequest, orderInfo);
         require(mintRequest.status == RequestStatus.PENDING);
@@ -147,16 +143,21 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             uint feeTokenAmount = inTokenAmount * mintRequest.issueFee / 10**feeDecimals;
             uint transferAmount = inTokenAmount + feeTokenAmount;
             require(inToken.balanceOf(address(this)) >= transferAmount, "not enough balance");
-            inToken.safeTransfer(mintRequest.requester, transferAmount);
+            if (!force) {
+                inToken.safeTransfer(mintRequest.requester, transferAmount);
+            } else {
+                claimables[tokenAddress][mintRequest.requester] += transferAmount;
+                tokenClaimables[tokenAddress] += transferAmount;
+            }
         }
         IAssetToken assetToken = IAssetToken(mintRequest.assetTokenAddress);
         assetToken.unlockIssue();
         mintRequests[nonce].status = RequestStatus.REJECTED;
-        emit RejectMintRequest(nonce);
+        emit RejectMintRequest(nonce, force);
     }
 
     function confirmMintRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external onlyOwner {
-        require(nonce < mintRequests.length);
+        require(nonce < mintRequests.length, "nonce too large");
         Request memory mintRequest = mintRequests[nonce];
         checkRequestOrderInfo(mintRequest, orderInfo);
         require(mintRequest.status == RequestStatus.PENDING);
@@ -260,7 +261,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
     }
 
     function confirmRedeemRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs, bool force) external onlyOwner {
-        require(nonce < redeemRequests.length);
+        require(nonce < redeemRequests.length, "nonce too large");
         Request memory redeemRequest = redeemRequests[nonce];
         checkRequestOrderInfo(redeemRequest, orderInfo);
         require(redeemRequest.status == RequestStatus.PENDING);
