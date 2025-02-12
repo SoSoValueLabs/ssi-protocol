@@ -97,7 +97,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         Token[] memory inTokenset = order.inTokenset;
         uint256 issueFee = _issueFees.get(assetID);
         for (uint i = 0; i < inTokenset.length; i++) {
-            require(bytes32(bytes(inTokenset[i].chain)) == bytes32(bytes(factory.chain())), "chain not match");
+            require(keccak256(bytes(inTokenset[i].chain)) == keccak256(bytes(factory.chain())), "chain not match");
             address tokenAddress = Utils.stringToAddress(inTokenset[i].addr);
             IERC20 inToken = IERC20(tokenAddress);
             uint inTokenAmount = inTokenset[i].amount * order.inAmount / 10**8;
@@ -136,7 +136,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         Token[] memory inTokenset = order.inTokenset;
         IAssetFactory factory = IAssetFactory(factoryAddress);
         for (uint i = 0; i < inTokenset.length; i++) {
-            require(bytes32(bytes(inTokenset[i].chain)) == bytes32(bytes(factory.chain())), "chain not match");
+            require(keccak256(bytes(inTokenset[i].chain)) == keccak256(bytes(factory.chain())), "chain not match");
             address tokenAddress = Utils.stringToAddress(inTokenset[i].addr);
             IERC20 inToken = IERC20(tokenAddress);
             uint inTokenAmount = inTokenset[i].amount * order.inAmount / 10**8;
@@ -175,7 +175,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         string memory chain = factory.chain();
         Order memory order = orderInfo.order;
         for (uint i = 0; i < inTokenset.length; i++) {
-            require(bytes32(bytes(inTokenset[i].chain)) == bytes32(bytes(chain)), "chain not match");
+            require(keccak256(bytes(inTokenset[i].chain)) == keccak256(bytes(chain)), "chain not match");
             address tokenAddress = Utils.stringToAddress(inTokenset[i].addr);
             IERC20 inToken = IERC20(tokenAddress);
             uint inTokenAmount = inTokenset[i].amount * order.inAmount / 10**8;
@@ -224,7 +224,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         require(assetToken.allowance(msg.sender, address(this)) >= order.inAmount, "not enough asset token allowance");
         Token[] memory outTokenset = order.outTokenset;
         for (uint i = 0; i < outTokenset.length; i++) {
-            require(bytes32(bytes(outTokenset[i].chain)) == bytes32(bytes(factory.chain())), "chain not match");
+            require(keccak256(bytes(outTokenset[i].chain)) == keccak256(bytes(factory.chain())), "chain not match");
             require(Utils.stringToAddress(order.outAddressList[i]) == address(this), "out address not valid");
         }
         assetToken.safeTransferFrom(msg.sender, address(this), order.inAmount);

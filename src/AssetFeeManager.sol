@@ -51,7 +51,7 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         require(Utils.containTokenset(assetToken.getFeeTokenset(), sellTokenset), "not enough fee to sell");
         for (uint i = 0; i < orderInfo.order.outTokenset.length; i++) {
             require(Utils.stringToAddress(orderInfo.order.outAddressList[i]) == factory.vault(), "fee receiver not match");
-            require(bytes32(bytes(orderInfo.order.outTokenset[i].chain)) == bytes32(bytes(factory.chain())), "outTokenset chain not match");
+            require(keccak256(bytes(orderInfo.order.outTokenset[i].chain)) == keccak256(bytes(factory.chain())), "outTokenset chain not match");
         }
         swap.addSwapRequest(orderInfo, false, true);
         burnFeeRequests.push(Request({
