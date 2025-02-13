@@ -22,7 +22,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
     using SafeERC20 for IERC20;
 
     enum HedgeOrderType { NONE, MINT, REDEEM }
-    enum HedgeOrderStatus { NONE, PENDING, REJECTED, CONFIRMED }
+    enum HedgeOrderStatus { NONE, PENDING, REJECTED, CONFIRMED, CANCELED }
 
     struct HedgeOrder {
         string chain;
@@ -54,6 +54,9 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
 
     string public chain;
 
+    uint256 public constant MAX_MINT_DELAY = 1 days;
+    uint256 public constant MAX_REDEEM_DELAY = 7 days;
+
     event AddAssetID(uint256 assetID);
     event RemoveAssetID(uint256 assetID);
     event UpdateOrderSigner(address oldOrderSigner, address orderSigner);
@@ -64,6 +67,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
     event ApplyRedeem(HedgeOrder hedgeOrder);
     event RejectRedeem(bytes32 orderHash);
     event ConfirmRedeem(bytes32 orderHash);
+    event CancelMint(bytes32 orderHash);
+    event CancelRedeem(bytes32 orderHash);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -183,6 +188,19 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         emit ApplyMint(hedgeOrder);
     }
 
+    function cancelMint(bytes32 orderHash) external onlyRole(PARTICIPANT_ROLE) whenNotPaused {
+        require(orderHashs.contains(orderHash), "order not exists");
+        require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
+        require(requestTimestamps[orderHash] + MAX_MINT_DELAY <= block.timestamp, "not timeout");
+        HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
+        require(msg.sender == hedgeOrder.requester, "not requester");
+        require(hedgeOrder.orderType == HedgeOrderType.MINT, "order type not match");
+        orderStatus[orderHash] = HedgeOrderStatus.CANCELED;
+        IERC20 assetToken = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
+        assetToken.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
+        emit CancelMint(orderHash);
+    }
+
     function rejectMint(bytes32 orderHash) external onlyOwner {
         require(orderHashs.contains(orderHash), "order not exists");
         require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
@@ -221,6 +239,18 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         requestTimestamps[orderHash] = block.timestamp;
         IERC20(address(this)).safeTransferFrom(hedgeOrder.requester, address(this), hedgeOrder.inAmount);
         emit ApplyRedeem(hedgeOrder);
+    }
+
+    function cancelRedeem(bytes32 orderHash) external onlyRole(PARTICIPANT_ROLE) whenNotPaused {
+        require(orderHashs.contains(orderHash), "order not exists");
+        require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
+        require(requestTimestamps[orderHash] + MAX_REDEEM_DELAY <= block.timestamp, "not timeout");
+        HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
+        require(msg.sender == hedgeOrder.requester, "not requester");
+        require(hedgeOrder.orderType == HedgeOrderType.REDEEM, "order type not match");
+        orderStatus[orderHash] = HedgeOrderStatus.CANCELED;
+        IERC20(address(this)).safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
+        emit CancelRedeem(orderHash);
     }
 
     function rejectRedeem(bytes32 orderHash) external onlyOwner {
