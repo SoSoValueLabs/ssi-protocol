@@ -96,6 +96,17 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         require(order.outAmount >= _minAmounts.get(assetID) && order.outAmount <= _maxAmounts.get(assetID), "mint amount not in range");
         Token[] memory inTokenset = order.inTokenset;
         uint256 issueFee = _issueFees.get(assetID);
+        mintRequests.push(Request({
+            nonce: mintRequests.length,
+            requester: msg.sender,
+            assetTokenAddress: assetTokenAddress,
+            amount: order.outAmount,
+            swapAddress: swapAddress,
+            orderHash: orderInfo.orderHash,
+            status: RequestStatus.PENDING,
+            requestTimestamp: block.timestamp,
+            issueFee: issueFee
+        }));
         for (uint i = 0; i < inTokenset.length; i++) {
             require(keccak256(bytes(inTokenset[i].chain)) == keccak256(bytes(factory.chain())), "chain not match");
             address tokenAddress = Utils.stringToAddress(inTokenset[i].addr);
@@ -108,17 +119,6 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             inToken.safeTransferFrom(msg.sender, address(this), transferAmount);
         }
         swap.addSwapRequest(orderInfo, true, false);
-        mintRequests.push(Request({
-            nonce: mintRequests.length,
-            requester: msg.sender,
-            assetTokenAddress: assetTokenAddress,
-            amount: order.outAmount,
-            swapAddress: swapAddress,
-            orderHash: orderInfo.orderHash,
-            status: RequestStatus.PENDING,
-            requestTimestamp: block.timestamp,
-            issueFee: issueFee
-        }));
         assetToken.lockIssue();
         emit AddMintRequest(mintRequests.length - 1);
         return mintRequests.length - 1;
@@ -131,7 +131,8 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         require(mintRequest.status == RequestStatus.PENDING);
         ISwap swap = ISwap(mintRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(mintRequest.orderHash);
-        require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL || swapRequest.status == SwapRequestStatus.FORCE_CANCEL, "swap request is not rejected/cancelled/force cancelled");
+        require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL || swapRequest.status == SwapRequestStatus.FORCE_CANCEL, "swap request is not rejected/cancelled/force cancelled");  
+        mintRequests[nonce].status = RequestStatus.REJECTED;
         Order memory order = orderInfo.order;
         Token[] memory inTokenset = order.inTokenset;
         IAssetFactory factory = IAssetFactory(factoryAddress);
@@ -152,7 +153,6 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         }
         IAssetToken assetToken = IAssetToken(mintRequest.assetTokenAddress);
         assetToken.unlockIssue();
-        mintRequests[nonce].status = RequestStatus.REJECTED;
         emit RejectMintRequest(nonce, force);
     }
 
@@ -164,6 +164,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         ISwap swap = ISwap(mintRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(mintRequest.orderHash);
         require(swapRequest.status == SwapRequestStatus.MAKER_CONFIRMED);
+        mintRequests[nonce].status = RequestStatus.CONFIRMED;
         for (uint i = 0; i < orderInfo.order.inTokenset.length; i++) {
             address tokenAddress = Utils.stringToAddress(orderInfo.order.inTokenset[i].addr);
             IERC20(tokenAddress).forceApprove(address(swap), orderInfo.order.inTokenset[i].amount * orderInfo.order.inAmount / 10**8);
@@ -187,7 +188,6 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         }
         IAssetToken assetToken = IAssetToken(mintRequest.assetTokenAddress);
         assetToken.mint(mintRequest.requester, mintRequest.amount);
-        mintRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockIssue();
         emit ConfirmMintRequest(nonce);
     }
@@ -227,8 +227,6 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             require(keccak256(bytes(outTokenset[i].chain)) == keccak256(bytes(factory.chain())), "chain not match");
             require(Utils.stringToAddress(order.outAddressList[i]) == address(this), "out address not valid");
         }
-        assetToken.safeTransferFrom(msg.sender, address(this), order.inAmount);
-        swap.addSwapRequest(orderInfo, false, true);
         redeemRequests.push(Request({
             nonce: redeemRequests.length,
             requester: msg.sender,
@@ -240,6 +238,8 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             requestTimestamp: block.timestamp,
             issueFee: _issueFees.get(assetID)
         }));
+        assetToken.safeTransferFrom(msg.sender, address(this), order.inAmount);
+        swap.addSwapRequest(orderInfo, false, true);
         assetToken.lockIssue();
         emit AddRedeemRequest(redeemRequests.length - 1);
         return redeemRequests.length - 1;
@@ -254,8 +254,8 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL || swapRequest.status == SwapRequestStatus.FORCE_CANCEL, "swap request is not rejected/cancelled/force cancelled");
         IAssetToken assetToken = IAssetToken(redeemRequest.assetTokenAddress);
         require(assetToken.balanceOf(address(this)) >= redeemRequest.amount, "not enough asset token to transfer");
-        assetToken.safeTransfer(redeemRequest.requester, redeemRequest.amount);
         redeemRequests[nonce].status = RequestStatus.REJECTED;
+        assetToken.safeTransfer(redeemRequest.requester, redeemRequest.amount);
         assetToken.unlockIssue();
         emit RejectRedeemRequest(nonce);
     }
@@ -268,6 +268,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         ISwap swap = ISwap(redeemRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(redeemRequest.orderHash);
         require(swapRequest.status == SwapRequestStatus.MAKER_CONFIRMED);
+        redeemRequests[nonce].status = RequestStatus.CONFIRMED;
         swap.confirmSwapRequest(orderInfo, inTxHashs);
         IAssetToken assetToken = IAssetToken(redeemRequest.assetTokenAddress);
         require(assetToken.balanceOf(address(this)) >= redeemRequest.amount, "not enough asset token to burn");
@@ -290,7 +291,6 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             outToken.safeTransfer(vault, feeTokenAmount);
         }
         assetToken.burn(redeemRequest.amount);
-        redeemRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockIssue();
         emit ConfirmRedeemRequest(nonce, force);
     }

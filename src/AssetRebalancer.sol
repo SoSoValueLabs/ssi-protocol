@@ -45,7 +45,6 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
             require(newTokenset[i].amount > 0, "zero token in new tokenset");
         }
         require(!Utils.hasDuplicates(newTokenset), "duplicated tokens in new tokenset");
-        swap.addSwapRequest(orderInfo, false, false);
         rebalanceRequests.push(Request({
             nonce: rebalanceRequests.length,
             requester: msg.sender,
@@ -57,6 +56,7 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
             requestTimestamp: block.timestamp,
             issueFee: 0
         }));
+        swap.addSwapRequest(orderInfo, false, false);
         assetToken.lockRebalance();
         emit AddRebalanceRequest(rebalanceRequests.length - 1);
         return rebalanceRequests.length - 1;
@@ -69,9 +69,9 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         ISwap swap = ISwap(rebalanceRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(rebalanceRequest.orderHash);
         require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL || swapRequest.status == SwapRequestStatus.FORCE_CANCEL);
+        rebalanceRequests[nonce].status = RequestStatus.REJECTED;
         IAssetToken assetToken = IAssetToken(rebalanceRequest.assetTokenAddress);
         assetToken.unlockRebalance();
-        rebalanceRequests[nonce].status = RequestStatus.REJECTED;
         emit RejectRebalanceRequest(nonce);
     }
 
@@ -83,13 +83,13 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         ISwap swap = ISwap(rebalanceRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(rebalanceRequest.orderHash);
         require(swapRequest.status == SwapRequestStatus.MAKER_CONFIRMED);
+        rebalanceRequests[nonce].status = RequestStatus.CONFIRMED;
         swap.confirmSwapRequest(orderInfo, inTxHashs);
         Order memory order = orderInfo.order;
         Token[] memory inBasket = Utils.muldivTokenset(order.outTokenset, order.outAmount, 10**8);
         Token[] memory outBasket = Utils.muldivTokenset(order.inTokenset, order.inAmount, 10**8);
         IAssetToken assetToken = IAssetToken(rebalanceRequest.assetTokenAddress);
         assetToken.rebalance(inBasket, outBasket);
-        rebalanceRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockRebalance();
         emit ConfirmRebalanceRequest(nonce);
     }

@@ -53,7 +53,6 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
             require(Utils.stringToAddress(orderInfo.order.outAddressList[i]) == factory.vault(), "fee receiver not match");
             require(keccak256(bytes(orderInfo.order.outTokenset[i].chain)) == keccak256(bytes(factory.chain())), "outTokenset chain not match");
         }
-        swap.addSwapRequest(orderInfo, false, true);
         burnFeeRequests.push(Request({
             nonce: burnFeeRequests.length,
             requester: msg.sender,
@@ -65,6 +64,7 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
             requestTimestamp: block.timestamp,
             issueFee: 0
         }));
+        swap.addSwapRequest(orderInfo, false, true);
         assetToken.lockBurnFee();
         emit AddBurnFeeRequest(burnFeeRequests.length - 1);
         return burnFeeRequests.length - 1;
@@ -77,9 +77,9 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         ISwap swap = ISwap(burnFeeRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(burnFeeRequest.orderHash);
         require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL || swapRequest.status == SwapRequestStatus.FORCE_CANCEL);
+        burnFeeRequests[nonce].status = RequestStatus.REJECTED;
         IAssetToken assetToken = IAssetToken(burnFeeRequest.assetTokenAddress);
         assetToken.unlockBurnFee();
-        burnFeeRequests[nonce].status = RequestStatus.REJECTED;
         emit RejectBurnFeeRequest(nonce);
     }
 
@@ -91,12 +91,12 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         ISwap swap = ISwap(burnFeeRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(burnFeeRequest.orderHash);
         require(swapRequest.status == SwapRequestStatus.MAKER_CONFIRMED);
+        burnFeeRequests[nonce].status = RequestStatus.CONFIRMED;
         swap.confirmSwapRequest(orderInfo, inTxHashs);
         IAssetToken assetToken = IAssetToken(burnFeeRequest.assetTokenAddress);
         Order memory order = orderInfo.order;
         Token[] memory sellTokenset = Utils.muldivTokenset(order.inTokenset, order.inAmount, 10**8);
         assetToken.burnFeeTokenset(sellTokenset);
-        burnFeeRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockBurnFee();
         emit ConfirmBurnFeeRequest(nonce);
     }
