@@ -152,4 +152,11 @@ library Utils {
         }
         return false;
     }
+
+    function validateTokenset(Token[] memory a) internal pure {
+        require(!hasDuplicates(a), "has dupliated tokens");
+        for (uint i = 0; i < a.length; i++) {
+            require(a[i].amount > 0, "token amount is zero");
+        }
+    }
 }

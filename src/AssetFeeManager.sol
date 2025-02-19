@@ -47,6 +47,8 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         require(assetToken.hasRole(assetToken.FEEMANAGER_ROLE(), address(this)), "not a fee manager");
         require(assetToken.burningFee() == false, "is burning fee");
         require(swap.checkOrderInfo(orderInfo) == 0, "order not valid");
+        Utils.validateTokenset(orderInfo.order.inTokenset);
+        Utils.validateTokenset(orderInfo.order.outTokenset);
         Token[] memory sellTokenset = Utils.muldivTokenset(orderInfo.order.inTokenset, orderInfo.order.inAmount, 10**8);
         require(Utils.containTokenset(assetToken.getFeeTokenset(), sellTokenset), "not enough fee to sell");
         for (uint i = 0; i < orderInfo.order.outTokenset.length; i++) {

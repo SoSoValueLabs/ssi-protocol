@@ -36,6 +36,8 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         require(assetToken.issuing() == false, "is issuing");
         require(swap.checkOrderInfo(orderInfo) == 0, "order not valid");
         require(keccak256(abi.encode(assetToken.getBasket())) == keccak256(abi.encode(basket)), "underlying basket not match");
+        Utils.validateTokenset(orderInfo.order.inTokenset);
+        Utils.validateTokenset(orderInfo.order.outTokenset);
         Token[] memory inBasket = Utils.muldivTokenset(orderInfo.order.outTokenset, orderInfo.order.outAmount, 10**8);
         Token[] memory outBasket = Utils.muldivTokenset(orderInfo.order.inTokenset, orderInfo.order.inAmount, 10**8);
         require(Utils.containTokenset(basket, outBasket), "not enough balance to sell");
