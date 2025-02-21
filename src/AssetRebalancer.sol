@@ -36,6 +36,8 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         require(assetToken.issuing() == false, "is issuing");
         require(swap.checkOrderInfo(orderInfo) == 0, "order not valid");
         require(keccak256(abi.encode(assetToken.getBasket())) == keccak256(abi.encode(basket)), "underlying basket not match");
+        Utils.validateTokenset(orderInfo.order.inTokenset);
+        Utils.validateTokenset(orderInfo.order.outTokenset);
         Token[] memory inBasket = Utils.muldivTokenset(orderInfo.order.outTokenset, orderInfo.order.outAmount, 10**8);
         Token[] memory outBasket = Utils.muldivTokenset(orderInfo.order.inTokenset, orderInfo.order.inAmount, 10**8);
         require(Utils.containTokenset(basket, outBasket), "not enough balance to sell");
@@ -45,7 +47,6 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
             require(newTokenset[i].amount > 0, "zero token in new tokenset");
         }
         require(!Utils.hasDuplicates(newTokenset), "duplicated tokens in new tokenset");
-        swap.addSwapRequest(orderInfo, false, false);
         rebalanceRequests.push(Request({
             nonce: rebalanceRequests.length,
             requester: msg.sender,
@@ -57,6 +58,7 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
             requestTimestamp: block.timestamp,
             issueFee: 0
         }));
+        swap.addSwapRequest(orderInfo, false, false);
         assetToken.lockRebalance();
         emit AddRebalanceRequest(rebalanceRequests.length - 1);
         return rebalanceRequests.length - 1;
@@ -69,9 +71,9 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         ISwap swap = ISwap(rebalanceRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(rebalanceRequest.orderHash);
         require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL || swapRequest.status == SwapRequestStatus.FORCE_CANCEL);
+        rebalanceRequests[nonce].status = RequestStatus.REJECTED;
         IAssetToken assetToken = IAssetToken(rebalanceRequest.assetTokenAddress);
         assetToken.unlockRebalance();
-        rebalanceRequests[nonce].status = RequestStatus.REJECTED;
         emit RejectRebalanceRequest(nonce);
     }
 
@@ -83,13 +85,13 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         ISwap swap = ISwap(rebalanceRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(rebalanceRequest.orderHash);
         require(swapRequest.status == SwapRequestStatus.MAKER_CONFIRMED);
+        rebalanceRequests[nonce].status = RequestStatus.CONFIRMED;
         swap.confirmSwapRequest(orderInfo, inTxHashs);
         Order memory order = orderInfo.order;
         Token[] memory inBasket = Utils.muldivTokenset(order.outTokenset, order.outAmount, 10**8);
         Token[] memory outBasket = Utils.muldivTokenset(order.inTokenset, order.inAmount, 10**8);
         IAssetToken assetToken = IAssetToken(rebalanceRequest.assetTokenAddress);
         assetToken.rebalance(inBasket, outBasket);
-        rebalanceRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockRebalance();
         emit ConfirmRebalanceRequest(nonce);
     }

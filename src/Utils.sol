@@ -7,6 +7,7 @@ library Utils {
     function stringToAddress(string memory str) internal pure returns (address) {
         bytes memory strBytes = bytes(str);
         require(strBytes.length == 42, "Invalid address length");
+        require(strBytes[0] == bytes1('0') && strBytes[1] == bytes1('x'), "Invalid address prefix");
         bytes memory addrBytes = new bytes(20);
 
         for (uint i = 0; i < 20; i++) {
@@ -150,5 +151,12 @@ library Utils {
             }
         }
         return false;
+    }
+
+    function validateTokenset(Token[] memory a) internal pure {
+        require(!hasDuplicates(a), "has dupliated tokens");
+        for (uint i = 0; i < a.length; i++) {
+            require(a[i].amount > 0, "token amount is zero");
+        }
     }
 }

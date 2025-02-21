@@ -58,7 +58,7 @@ struct SwapRequest {
     uint256 requestTimestamp;
 }
 
-enum RequestStatus {NONE, PENDING, CONFIRMED, REJECTED}
+enum RequestStatus {NONE, PENDING, CONFIRMED, REJECTED, CANCEL}
 
 struct Request {
     uint nonce;

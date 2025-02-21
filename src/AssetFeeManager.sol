@@ -47,13 +47,14 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         require(assetToken.hasRole(assetToken.FEEMANAGER_ROLE(), address(this)), "not a fee manager");
         require(assetToken.burningFee() == false, "is burning fee");
         require(swap.checkOrderInfo(orderInfo) == 0, "order not valid");
+        Utils.validateTokenset(orderInfo.order.inTokenset);
+        Utils.validateTokenset(orderInfo.order.outTokenset);
         Token[] memory sellTokenset = Utils.muldivTokenset(orderInfo.order.inTokenset, orderInfo.order.inAmount, 10**8);
         require(Utils.containTokenset(assetToken.getFeeTokenset(), sellTokenset), "not enough fee to sell");
         for (uint i = 0; i < orderInfo.order.outTokenset.length; i++) {
             require(Utils.stringToAddress(orderInfo.order.outAddressList[i]) == factory.vault(), "fee receiver not match");
-            require(bytes32(bytes(orderInfo.order.outTokenset[i].chain)) == bytes32(bytes(factory.chain())), "outTokenset chain not match");
+            require(keccak256(bytes(orderInfo.order.outTokenset[i].chain)) == keccak256(bytes(factory.chain())), "outTokenset chain not match");
         }
-        swap.addSwapRequest(orderInfo, false, true);
         burnFeeRequests.push(Request({
             nonce: burnFeeRequests.length,
             requester: msg.sender,
@@ -65,6 +66,7 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
             requestTimestamp: block.timestamp,
             issueFee: 0
         }));
+        swap.addSwapRequest(orderInfo, false, true);
         assetToken.lockBurnFee();
         emit AddBurnFeeRequest(burnFeeRequests.length - 1);
         return burnFeeRequests.length - 1;
@@ -77,9 +79,9 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         ISwap swap = ISwap(burnFeeRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(burnFeeRequest.orderHash);
         require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL || swapRequest.status == SwapRequestStatus.FORCE_CANCEL);
+        burnFeeRequests[nonce].status = RequestStatus.REJECTED;
         IAssetToken assetToken = IAssetToken(burnFeeRequest.assetTokenAddress);
         assetToken.unlockBurnFee();
-        burnFeeRequests[nonce].status = RequestStatus.REJECTED;
         emit RejectBurnFeeRequest(nonce);
     }
 
@@ -91,12 +93,12 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         ISwap swap = ISwap(burnFeeRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(burnFeeRequest.orderHash);
         require(swapRequest.status == SwapRequestStatus.MAKER_CONFIRMED);
+        burnFeeRequests[nonce].status = RequestStatus.CONFIRMED;
         swap.confirmSwapRequest(orderInfo, inTxHashs);
         IAssetToken assetToken = IAssetToken(burnFeeRequest.assetTokenAddress);
         Order memory order = orderInfo.order;
         Token[] memory sellTokenset = Utils.muldivTokenset(order.inTokenset, order.inAmount, 10**8);
         assetToken.burnFeeTokenset(sellTokenset);
-        burnFeeRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockBurnFee();
         emit ConfirmBurnFeeRequest(nonce);
     }

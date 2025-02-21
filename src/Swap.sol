@@ -133,7 +133,7 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     function checkTokenset(Token[] memory tokenset, string[] memory addressList) internal view {
         require(tokenset.length == addressList.length, "tokenset length not match addressList length");
         for (uint i = 0; i < tokenset.length; i++) {
-            require(bytes32(bytes(tokenset[i].chain)) == bytes32(bytes(chain)), "chain not match");
+            require(keccak256(bytes(tokenset[i].chain)) == keccak256(bytes(chain)), "chain not match");
             address tokenAddress = Utils.stringToAddress(tokenset[i].addr);
             require(tokenAddress != address(0), "zero token address");
             address receiveAddress = Utils.stringToAddress(addressList[i]);
