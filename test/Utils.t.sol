@@ -6,61 +6,61 @@ import "../src/Interface.sol";
 import {Test, console} from "forge-std/Test.sol";
 
 contract UtilsTest is Test {
-    // 测试stringToAddress函数
+    // Test the stringToAddress function
     function test_StringToAddress() public {
-        // 测试有效地址
+        // Test valid address
         address expected = 0x1234567890123456789012345678901234567890;
         address result = Utils.stringToAddress("0x1234567890123456789012345678901234567890");
         assertEq(result, expected);
 
-        // 测试小写字母
+        // Test lowercase letters
         expected = 0xabCDeF0123456789AbcdEf0123456789aBCDEF01;
         result = Utils.stringToAddress("0xabcdef0123456789abcdef0123456789abcdef01");
         assertEq(result, expected);
 
-        // 测试大写字母
+        // Test uppercase letters
         expected = 0xabCDeF0123456789AbcdEf0123456789aBCDEF01;
         result = Utils.stringToAddress("0xABCDEF0123456789ABCDEF0123456789ABCDEF01");
         assertEq(result, expected);
 
-        // 测试混合大小写
+        // Test mixed case
         expected = 0xabCDeF0123456789AbcdEf0123456789aBCDEF01;
         result = Utils.stringToAddress("0xaBcDeF0123456789aBcDeF0123456789aBcDeF01");
         assertEq(result, expected);
     }
 
-    // 测试stringToAddress函数的错误情况
+    // Test error cases for the stringToAddress function
     function test_StringToAddress_InvalidLength() public {
-        // 测试长度不足
+        // Test too short
         vm.expectRevert("Invalid address length");
         Utils.stringToAddress("0x123");
 
-        // 测试长度过长
+        // Test too long
         vm.expectRevert("Invalid address length");
         Utils.stringToAddress("0x1234567890123456789012345678901234567890123");
     }
 
     function test_StringToAddress_InvalidPrefix() public {
-        // 测试前缀不是0x
+        // Test prefix is not 0x
         vm.expectRevert("Invalid address prefix");
         Utils.stringToAddress("1x1234567890123456789012345678901234567890");
     }
 
     function test_HexCharToByte_InvalidChar() public {
-        // 测试无效的十六进制字符
+        // Test invalid hex character
         vm.expectRevert("Invalid hex character");
-        // 我们需要通过一个包装函数来测试内部函数
+        // We need to use a wrapper function to test the internal function
         this.callHexCharToByte("g");
     }
 
-    // 包装函数，用于测试hexCharToByte
+    // Wrapper function to test hexCharToByte
     function callHexCharToByte(string memory char) public pure {
         Utils.hexCharToByte(bytes(char)[0]);
     }
 
-    // 测试containTokenset函数
+    // Test the containTokenset function
     function test_ContainTokenset() public {
-        // 创建测试用的Token数组
+        // Create a Token array for testing
         Token[] memory a = new Token[](2);
         a[0] = Token({
             chain: "SETH",
@@ -77,7 +77,7 @@ contract UtilsTest is Test {
             amount: 200
         });
 
-        // 创建包含在a中的Token数组
+        // Create a Token array that is contained in a
         Token[] memory b = new Token[](1);
         b[0] = Token({
             chain: "SETH",
@@ -87,14 +87,14 @@ contract UtilsTest is Test {
             amount: 50
         });
 
-        // a应该包含b
+        // a should contain b
         assertTrue(Utils.containTokenset(a, b));
 
-        // 修改b中的金额，使其超过a中的金额
+        // Modify the amount in b to exceed the amount in a
         b[0].amount = 150;
         assertFalse(Utils.containTokenset(a, b));
 
-        // 创建不在a中的Token
+        // Create a Token that is not in a
         Token[] memory c = new Token[](1);
         c[0] = Token({
             chain: "SETH",
@@ -104,13 +104,13 @@ contract UtilsTest is Test {
             amount: 50
         });
 
-        // a不应该包含c
+        // a should not contain c
         assertFalse(Utils.containTokenset(a, c));
     }
 
-    // 测试subTokenset函数
+    // Test the subTokenset function
     function test_SubTokenset() public {
-        // 创建测试用的Token数组
+        // Create a Token array for testing
         Token[] memory a = new Token[](2);
         a[0] = Token({
             chain: "SETH",
@@ -127,7 +127,7 @@ contract UtilsTest is Test {
             amount: 200
         });
 
-        // 创建要减去的Token数组
+        // Create a Token array to subtract
         Token[] memory b = new Token[](1);
         b[0] = Token({
             chain: "SETH",
@@ -137,35 +137,35 @@ contract UtilsTest is Test {
             amount: 50
         });
 
-        // 计算a - b
+        // Calculate a - b
         Token[] memory result = Utils.subTokenset(a, b);
 
-        // 结果应该有2个元素
+        // The result should have 2 elements
         assertEq(result.length, 2);
 
-        // 第一个元素应该是WBTC，金额为50
+        // The first element should be WBTC with an amount of 50
         assertEq(result[0].symbol, "WBTC");
         assertEq(result[0].amount, 50);
 
-        // 第二个元素应该是WETH，金额为200
+        // The second element should be WETH with an amount of 200
         assertEq(result[1].symbol, "WETH");
         assertEq(result[1].amount, 200);
 
-        // 测试完全减去一个Token
+        // Test completely subtracting a Token
         b[0].amount = 100;
         result = Utils.subTokenset(a, b);
 
-        // 结果应该只有1个元素
+        // The result should have only 1 element
         assertEq(result.length, 1);
 
-        // 元素应该是WETH，金额为200
+        // The element should be WETH with an amount of 200
         assertEq(result[0].symbol, "WETH");
         assertEq(result[0].amount, 200);
     }
 
-    // 测试subTokenset函数的错误情况
+    // Test error cases for the subTokenset function
     function test_SubTokenset_InsufficientAmount() public {
-        // 创建测试用的Token数组
+        // Create a Token array for testing
         Token[] memory a = new Token[](1);
         a[0] = Token({
             chain: "SETH",
@@ -175,7 +175,7 @@ contract UtilsTest is Test {
             amount: 50
         });
 
-        // 创建要减去的Token数组，金额大于a中的金额
+        // Create a Token array to subtract with an amount greater than in a
         Token[] memory b = new Token[](1);
         b[0] = Token({
             chain: "SETH",
@@ -185,13 +185,13 @@ contract UtilsTest is Test {
             amount: 100
         });
 
-        // 应该抛出错误
+        // Should revert
         vm.expectRevert("a.amount less than b.amount");
         Utils.subTokenset(a, b);
     }
 
     function test_SubTokenset_NotContains() public {
-        // 创建测试用的Token数组
+        // Create a Token array for testing
         Token[] memory a = new Token[](1);
         a[0] = Token({
             chain: "SETH",
@@ -201,7 +201,7 @@ contract UtilsTest is Test {
             amount: 100
         });
 
-        // 创建不在a中的Token数组
+        // Create a Token array that is not in a
         Token[] memory b = new Token[](1);
         b[0] = Token({
             chain: "SETH",
@@ -211,14 +211,14 @@ contract UtilsTest is Test {
             amount: 50
         });
 
-        // 应该抛出错误
+        // Should revert
         vm.expectRevert("a not contains b");
         Utils.subTokenset(a, b);
     }
 
-    // 测试addTokenset函数
+    // Test the addTokenset function
     function test_AddTokenset() public {
-        // 创建测试用的Token数组
+        // Create a Token array for testing
         Token[] memory a = new Token[](1);
         a[0] = Token({
             chain: "SETH",
@@ -228,7 +228,7 @@ contract UtilsTest is Test {
             amount: 100
         });
 
-        // 创建要添加的Token数组，包含相同的Token
+        // Create a Token array to add, containing the same Token
         Token[] memory b = new Token[](1);
         b[0] = Token({
             chain: "SETH",
@@ -238,17 +238,17 @@ contract UtilsTest is Test {
             amount: 50
         });
 
-        // 计算a + b
+        // Calculate a + b
         Token[] memory result = Utils.addTokenset(a, b);
 
-        // 结果应该有1个元素
+        // The result should have 1 element
         assertEq(result.length, 1);
 
-        // 元素应该是WBTC，金额为150
+        // The element should be WBTC with an amount of 150
         assertEq(result[0].symbol, "WBTC");
         assertEq(result[0].amount, 150);
 
-        // 创建要添加的Token数组，包含不同的Token
+        // Create a Token array to add, containing a different Token
         Token[] memory c = new Token[](1);
         c[0] = Token({
             chain: "SETH",
@@ -258,24 +258,24 @@ contract UtilsTest is Test {
             amount: 200
         });
 
-        // 计算a + c
+        // Calculate a + c
         result = Utils.addTokenset(a, c);
 
-        // 结果应该有2个元素
+        // The result should have 2 elements
         assertEq(result.length, 2);
 
-        // 第一个元素应该是WBTC，金额为100
+        // The first element should be WBTC with an amount of 100
         assertEq(result[0].symbol, "WBTC");
         assertEq(result[0].amount, 100);
 
-        // 第二个元素应该是WETH，金额为200
+        // The second element should be WETH with an amount of 200
         assertEq(result[1].symbol, "WETH");
         assertEq(result[1].amount, 200);
     }
 
-    // 测试copyTokenset函数
+    // Test the copyTokenset function
     function test_CopyTokenset() public {
-        // 创建测试用的Token数组
+        // Create a Token array for testing
         Token[] memory a = new Token[](2);
         a[0] = Token({
             chain: "SETH",
@@ -292,28 +292,28 @@ contract UtilsTest is Test {
             amount: 200
         });
 
-        // 复制Token数组
+        // Copy the Token array
         Token[] memory result = Utils.copyTokenset(a);
 
-        // 结果应该有2个元素
+        // The result should have 2 elements
         assertEq(result.length, 2);
 
-        // 第一个元素应该是WBTC，金额为100
+        // The first element should be WBTC with an amount of 100
         assertEq(result[0].symbol, "WBTC");
         assertEq(result[0].amount, 100);
 
-        // 第二个元素应该是WETH，金额为200
+        // The second element should be WETH with an amount of 200
         assertEq(result[1].symbol, "WETH");
         assertEq(result[1].amount, 200);
 
-        // 修改原数组不应该影响复制的数组
+        // Modifying the original array should not affect the copied array
         a[0].amount = 150;
         assertEq(result[0].amount, 100);
     }
 
-    // 测试muldivTokenset函数
+    // Test the muldivTokenset function
     function test_MuldivTokenset() public {
-        // 创建测试用的Token数组
+        // Create a Token array for testing
         Token[] memory a = new Token[](2);
         a[0] = Token({
             chain: "SETH",
@@ -330,38 +330,38 @@ contract UtilsTest is Test {
             amount: 200
         });
 
-        // 计算a * 2 / 1
+        // Calculate a * 2 / 1
         Token[] memory result = Utils.muldivTokenset(a, 2, 1);
 
-        // 结果应该有2个元素
+        // The result should have 2 elements
         assertEq(result.length, 2);
 
-        // 第一个元素应该是WBTC，金额为200
+        // The first element should be WBTC with an amount of 200
         assertEq(result[0].symbol, "WBTC");
         assertEq(result[0].amount, 200);
 
-        // 第二个元素应该是WETH，金额为400
+        // The second element should be WETH with an amount of 400
         assertEq(result[1].symbol, "WETH");
         assertEq(result[1].amount, 400);
 
-        // 计算a * 1 / 2
+        // Calculate a * 1 / 2
         result = Utils.muldivTokenset(a, 1, 2);
 
-        // 结果应该有2个元素
+        // The result should have 2 elements
         assertEq(result.length, 2);
 
-        // 第一个元素应该是WBTC，金额为50
+        // The first element should be WBTC with an amount of 50
         assertEq(result[0].symbol, "WBTC");
         assertEq(result[0].amount, 50);
 
-        // 第二个元素应该是WETH，金额为100
+        // The second element should be WETH with an amount of 100
         assertEq(result[1].symbol, "WETH");
         assertEq(result[1].amount, 100);
     }
 
-    // 测试isSameToken函数
+    // Test the isSameToken function
     function test_IsSameToken() public {
-        // 创建两个相同的Token
+        // Create two identical Tokens (different amounts)
         Token memory a = Token({
             chain: "SETH",
             symbol: "WBTC",
@@ -378,32 +378,32 @@ contract UtilsTest is Test {
             amount: 200
         });
 
-        // a和b应该是相同的Token（金额不影响）
+        // a and b should be the same Token (amount does not affect)
         assertTrue(Utils.isSameToken(a, b));
 
-        // 修改b的链
+        // Modify the chain of b
         b.chain = "ETH";
         assertFalse(Utils.isSameToken(a, b));
         b.chain = "SETH";
 
-        // 修改b的符号
+        // Modify the symbol of b
         b.symbol = "BTC";
         assertFalse(Utils.isSameToken(a, b));
         b.symbol = "WBTC";
 
-        // 修改b的地址
+        // Modify the address of b
         b.addr = "0xabcdef0123456789abcdef0123456789abcdef01";
         assertFalse(Utils.isSameToken(a, b));
         b.addr = "0x1234567890123456789012345678901234567890";
 
-        // 修改b的小数位数
+        // Modify the decimals of b
         b.decimals = 18;
         assertFalse(Utils.isSameToken(a, b));
     }
 
-    // 测试calcTokenHash函数
+    // Test the calcTokenHash function
     function test_CalcTokenHash() public {
-        // 创建两个相同的Token（金额不同）
+        // Create two identical Tokens (different amounts)
         Token memory a = Token({
             chain: "SETH",
             symbol: "WBTC",
@@ -420,38 +420,38 @@ contract UtilsTest is Test {
             amount: 200
         });
 
-        // a和b的哈希应该相同（金额不影响哈希）
+        // The hashes of a and b should be the same (amount does not affect the hash)
         bytes32 hashA = Utils.calcTokenHash(a);
         bytes32 hashB = Utils.calcTokenHash(b);
         assertEq(hashA, hashB);
 
-        // 修改b的链
+        // Modify the chain of b
         b.chain = "ETH";
         hashB = Utils.calcTokenHash(b);
         assertTrue(hashA != hashB);
         b.chain = "SETH";
 
-        // 修改b的符号
+        // Modify the symbol of b
         b.symbol = "BTC";
         hashB = Utils.calcTokenHash(b);
         assertTrue(hashA != hashB);
         b.symbol = "WBTC";
 
-        // 修改b的地址
+        // Modify the address of b
         b.addr = "0xabcdef0123456789abcdef0123456789abcdef01";
         hashB = Utils.calcTokenHash(b);
         assertTrue(hashA != hashB);
         b.addr = "0x1234567890123456789012345678901234567890";
 
-        // 修改b的小数位数
+        // Modify the decimals of b
         b.decimals = 18;
         hashB = Utils.calcTokenHash(b);
         assertTrue(hashA != hashB);
     }
 
-    // 测试hasDuplicates函数
+    // Test the hasDuplicates function
     function test_HasDuplicates() public {
-        // 创建没有重复的Token数组
+        // Create a Token array without duplicates
         Token[] memory a = new Token[](2);
         a[0] = Token({
             chain: "SETH",
@@ -468,10 +468,10 @@ contract UtilsTest is Test {
             amount: 200
         });
 
-        // a不应该有重复
+        // a should not have duplicates
         assertFalse(Utils.hasDuplicates(a));
 
-        // 创建有重复的Token数组
+        // Create a Token array with duplicates
         Token[] memory b = new Token[](3);
         b[0] = Token({
             chain: "SETH",
@@ -495,13 +495,13 @@ contract UtilsTest is Test {
             amount: 300
         });
 
-        // b应该有重复
+        // b should have duplicates
         assertTrue(Utils.hasDuplicates(b));
     }
 
-    // 测试validateTokenset函数
+    // Test the validateTokenset function
     function test_ValidateTokenset() public {
-        // 创建有效的Token数组
+        // Create a valid Token array
         Token[] memory a = new Token[](2);
         a[0] = Token({
             chain: "SETH",
@@ -518,10 +518,10 @@ contract UtilsTest is Test {
             amount: 200
         });
 
-        // 验证应该成功
+        // Validation should succeed
         Utils.validateTokenset(a);
 
-        // 创建有重复的Token数组
+        // Create a Token array with duplicates
         Token[] memory b = new Token[](3);
         b[0] = Token({
             chain: "SETH",
@@ -545,11 +545,11 @@ contract UtilsTest is Test {
             amount: 300
         });
 
-        // 验证应该失败
+        // Validation should fail
         vm.expectRevert("has dupliated tokens");
         Utils.validateTokenset(b);
 
-        // 创建有金额为0的Token数组
+        // Create a Token array with an amount of 0
         Token[] memory c = new Token[](2);
         c[0] = Token({
             chain: "SETH",
@@ -566,7 +566,7 @@ contract UtilsTest is Test {
             amount: 0
         });
 
-        // 验证应该失败
+        // Validation should fail
         vm.expectRevert("token amount is zero");
         Utils.validateTokenset(c);
     }

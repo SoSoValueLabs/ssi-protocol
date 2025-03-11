@@ -39,13 +39,13 @@ contract USITest is Test {
     function setUp() public {
         orderSigner = vm.addr(orderSignerPk);
 
-        // 创建模拟代币
+        // Create mock tokens
         WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
         WETH = new MockToken("Wrapped ETH", "WETH", 18);
 
         vm.startPrank(owner);
 
-        // 部署AssetFactory
+        // Deploy AssetFactory
         AssetToken tokenImpl = new AssetToken();
         AssetFactory factoryImpl = new AssetFactory();
         address factoryAddress = address(
@@ -55,7 +55,7 @@ contract USITest is Test {
             )
         );
         factory = AssetFactory(factoryAddress);
-        // 部署AssetIssuer
+        // Deploy AssetIssuer
         issuer = AssetIssuer(
             address(
                 new ERC1967Proxy(
@@ -64,7 +64,7 @@ contract USITest is Test {
             )
         );
 
-        // 创建资产代币
+        // Create asset tokens
         address assetTokenAddress =
             factory.createAssetToken(getAsset(), 10000, address(issuer), address(0x2), address(0x3), address(0x4));
         assetToken = AssetToken(assetTokenAddress);
@@ -72,7 +72,7 @@ contract USITest is Test {
             factory.createAssetToken(getAsset2(), 10000, address(issuer), address(0x2), address(0x3), address(0x4));
         assetToken2 = AssetToken(assetTokenAddress2);
 
-        // 部署USSI合约
+        // Deploy USSI contract
         ussi = USSI(
             address(
                 new ERC1967Proxy(
@@ -82,13 +82,13 @@ contract USITest is Test {
             )
         );
 
-        // 设置权限和支持的资产
+        // Set permissions and supported assets
         ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
         ussi.addSupportAsset(ASSET_ID1);
 
         vm.stopPrank();
 
-        // 给hedger铸造资产代币
+        // Mint asset tokens to hedger
         deal(address(assetToken), hedger, MINT_AMOUNT);
         vm.startPrank(address(issuer));
         assetToken.mint(staker, MINT_AMOUNT);
@@ -135,12 +135,12 @@ contract USITest is Test {
     function test_AddSupportAsset() public {
         vm.startPrank(owner);
 
-        // 测试添加支持的资产
+        // Test adding a supported asset
         ussi.addSupportAsset(2);
 
-        // 验证资产已添加
+        // Verify the asset is added
         uint256[] memory assetIDs = ussi.getSupportAssetIDs();
-        // 验证资产 2 在支持的资产列表中
+        // Verify asset 2 is in the list of supported assets
         bool isSupportAsset = false;
         for (uint256 i = 0; i < assetIDs.length; i++) {
             if (assetIDs[i] == 2) {
@@ -150,10 +150,10 @@ contract USITest is Test {
         }
         assertEq(isSupportAsset, true);
 
-        // 测试移除支持的资产
+        // Test removing a supported asset
         ussi.removeSupportAsset(2);
 
-        // 验证资产已移除
+        // Verify the asset is removed
         uint256[] memory assetIDs_remove = ussi.getSupportAssetIDs();
         bool hasRemoved = true;
         for (uint256 i = 0; i < assetIDs_remove.length; i++) {
@@ -167,7 +167,7 @@ contract USITest is Test {
     }
 
     function test_ApplyMint() public {
-        // 创建铸造订单
+        // Create a mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -181,28 +181,28 @@ contract USITest is Test {
             receiver: receiver
         });
 
-        // 签名订单
+        // Sign the order
         bytes32 orderHash = keccak256(abi.encode(mintOrder));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 申请铸造
+        // Apply for minting
         vm.startPrank(hedger);
         assetToken.approve(address(ussi), MINT_AMOUNT);
         ussi.applyMint(mintOrder, orderSign);
         vm.stopPrank();
 
-        // 验证申请状态
+        // Verify the application status
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.PENDING));
         assertEq(ussi.requestTimestamps(orderHash), block.timestamp);
 
-        // 验证资产已转移
+        // Verify the asset has been transferred
         assertEq(assetToken.balanceOf(hedger), 0);
         assertEq(assetToken.balanceOf(address(ussi)), MINT_AMOUNT);
     }
 
     function test_ConfirmMint() public {
-        // 创建并申请铸造
+        // Create and apply for minting
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -224,19 +224,19 @@ contract USITest is Test {
         ussi.applyMint(mintOrder, orderSign);
         vm.stopPrank();
         vm.startPrank(owner);
-        // 确认铸造
+        // Confirm minting
         ussi.confirmMint(orderHash);
         vm.stopPrank();
 
-        // 验证确认状态
+        // Verify the confirmation status
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CONFIRMED));
 
-        // 验证USSI代币已铸造
+        // Verify USSI tokens have been minted
         assertEq(ussi.balanceOf(hedger), USSI_AMOUNT);
     }
 
     function test_CancelMint() public {
-        // 创建并申请铸造
+        // Create and apply for minting
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -258,27 +258,27 @@ contract USITest is Test {
         assetToken.approve(address(ussi), MINT_AMOUNT);
         ussi.applyMint(mintOrder, orderSign);
 
-        // 尝试取消但还未超时
+        // Attempt to cancel but not yet timed out
         vm.expectRevert("not timeout");
         ussi.cancelMint(orderHash);
 
-        // 等待超时
+        // Wait for timeout
         vm.warp(block.timestamp + ussi.MAX_MINT_DELAY() + 1);
 
-        // 取消铸造
+        // Cancel minting
         ussi.cancelMint(orderHash);
         vm.stopPrank();
 
-        // 验证取消状态
+        // Verify the cancellation status
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CANCELED));
 
-        // 验证资产已返还
+        // Verify the asset has been returned
         assertEq(assetToken.balanceOf(hedger), MINT_AMOUNT);
         assertEq(assetToken.balanceOf(address(ussi)), 0);
     }
 
     function test_RejectMint() public {
-        // 创建并申请铸造
+        // Create and apply for minting
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -301,24 +301,24 @@ contract USITest is Test {
         ussi.applyMint(mintOrder, orderSign);
         vm.stopPrank();
 
-        // 拒绝铸造
+        // Reject minting
         vm.startPrank(owner);
         ussi.rejectMint(orderHash);
         vm.stopPrank();
 
-        // 验证拒绝状态
+        // Verify the rejection status
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.REJECTED));
 
-        // 验证资产已返还
+        // Verify the asset has been returned
         assertEq(assetToken.balanceOf(hedger), MINT_AMOUNT);
         assertEq(assetToken.balanceOf(address(ussi)), 0);
     }
 
     function test_ApplyRedeem() public {
-        // 先铸造USSI代币
+        // Mint USSI tokens first
         deal(address(ussi), hedger, USSI_AMOUNT);
 
-        // 创建赎回订单
+        // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -332,31 +332,31 @@ contract USITest is Test {
             receiver: receiver
         });
 
-        // 签名订单
+        // Sign the order
         bytes32 orderHash = keccak256(abi.encode(redeemOrder));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 申请赎回
+        // Apply for redemption
         vm.startPrank(hedger);
         ussi.approve(address(ussi), USSI_AMOUNT);
         ussi.applyRedeem(redeemOrder, orderSign);
         vm.stopPrank();
 
-        // 验证申请状态
+        // Verify the application status
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.PENDING));
         assertEq(ussi.requestTimestamps(orderHash), block.timestamp);
 
-        // 验证USSI代币已转移
+        // Verify USSI tokens have been transferred
         assertEq(ussi.balanceOf(hedger), 0);
         assertEq(ussi.balanceOf(address(ussi)), USSI_AMOUNT);
     }
 
     function test_ConfirmRedeem() public {
-        // 先铸造USSI代币
+        // Mint USSI tokens first
         deal(address(ussi), hedger, USSI_AMOUNT);
 
-        // 创建赎回订单
+        // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -379,7 +379,7 @@ contract USITest is Test {
         ussi.applyRedeem(redeemOrder, orderSign);
         vm.stopPrank();
 
-        // 确认赎回（使用交易哈希）
+        // Confirm redemption (using transaction hash)
         vm.startPrank(owner);
         bytes32 txHash = bytes32(uint256(1));
         WBTC.mint(owner, MINT_AMOUNT);
@@ -387,19 +387,19 @@ contract USITest is Test {
         ussi.confirmRedeem(orderHash, txHash);
         vm.stopPrank();
 
-        // 验证确认状态
+        // Verify the confirmation status
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CONFIRMED));
         assertEq(ussi.redeemTxHashs(orderHash), txHash);
 
-        // 验证USSI代币已销毁
+        // Verify USSI tokens have been burned
         assertEq(ussi.balanceOf(address(hedger)), 0);
     }
 
     function test_ConfirmRedeemWithToken() public {
-        // 先铸造USSI代币
+        // Mint USSI tokens first
         deal(address(ussi), hedger, USSI_AMOUNT);
 
-        // 创建赎回订单
+        // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -422,25 +422,25 @@ contract USITest is Test {
         ussi.applyRedeem(redeemOrder, orderSign);
         vm.stopPrank();
 
-        // 确认赎回（直接转账代币）
+        // Confirm redemption (directly transfer tokens)
         vm.startPrank(owner);
         WBTC.mint(address(ussi), MINT_AMOUNT);
         ussi.confirmRedeem(orderHash, bytes32(0));
         vm.stopPrank();
 
-        // 验证确认状态
+        // Verify the confirmation status
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CONFIRMED));
 
-        // 验证代币已转移
+        // Verify tokens have been transferred
         assertEq(WBTC.balanceOf(hedger), MINT_AMOUNT);
         assertEq(ussi.balanceOf(address(hedger)), 0);
     }
 
     function test_CancelRedeem() public {
-        // 先铸造USSI代币
+        // Mint USSI tokens first
         deal(address(ussi), hedger, USSI_AMOUNT);
 
-        // 创建赎回订单
+        // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -462,30 +462,30 @@ contract USITest is Test {
         ussi.approve(address(ussi), USSI_AMOUNT);
         ussi.applyRedeem(redeemOrder, orderSign);
 
-        // 尝试取消但还未超时
+        // Attempt to cancel but not yet timed out
         vm.expectRevert("not timeout");
         ussi.cancelRedeem(orderHash);
 
-        // 等待超时
+        // Wait for timeout
         vm.warp(block.timestamp + ussi.MAX_REDEEM_DELAY() + 1);
 
-        // 取消赎回
+        // Cancel redemption
         ussi.cancelRedeem(orderHash);
         vm.stopPrank();
 
-        // 验证取消状态
+        // Verify the cancellation status
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CANCELED));
 
-        // 验证USSI代币已返还
+        // Verify USSI tokens have been returned
         assertEq(ussi.balanceOf(hedger), USSI_AMOUNT);
         assertEq(ussi.balanceOf(address(ussi)), 0);
     }
 
     function test_RejectRedeem() public {
-        // 先铸造USSI代币
+        // Mint USSI tokens first
         deal(address(ussi), hedger, USSI_AMOUNT);
 
-        // 创建赎回订单
+        // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -508,15 +508,15 @@ contract USITest is Test {
         ussi.applyRedeem(redeemOrder, orderSign);
         vm.stopPrank();
 
-        // 拒绝赎回
+        // Reject redemption
         vm.startPrank(owner);
         ussi.rejectRedeem(orderHash);
         vm.stopPrank();
 
-        // 验证拒绝状态
+        // Verify the rejection status
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.REJECTED));
 
-        // 验证USSI代币已返还
+        // Verify USSI tokens have been returned
         assertEq(ussi.balanceOf(hedger), USSI_AMOUNT);
         assertEq(ussi.balanceOf(address(ussi)), 0);
     }
@@ -530,7 +530,7 @@ contract USITest is Test {
 
         assertEq(ussi.orderSigner(), newOrderSigner);
 
-        // 测试错误情况
+        // Test error cases
         vm.startPrank(owner);
         vm.expectRevert("orderSigner is zero address");
         ussi.updateOrderSigner(address(0));
@@ -549,7 +549,7 @@ contract USITest is Test {
 
         assertEq(ussi.redeemToken(), newRedeemToken);
 
-        // 测试错误情况
+        // Test error cases
         vm.startPrank(owner);
         vm.expectRevert("redeem token is zero address");
         ussi.updateRedeemToken(address(0));
@@ -560,10 +560,10 @@ contract USITest is Test {
     }
 
     function test_Pause() public {
-        // 先铸造USSI代币
+        // Mint USSI tokens first
         deal(address(ussi), hedger, USSI_AMOUNT);
 
-        // 创建赎回订单
+        // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -581,12 +581,12 @@ contract USITest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 暂停合约
+        // Pause the contract
         vm.startPrank(owner);
         ussi.pause();
         vm.stopPrank();
 
-        // 测试暂停状态下的操作
+        // Test operations under paused state
         vm.startPrank(hedger);
         ussi.approve(address(ussi), USSI_AMOUNT);
 
@@ -598,22 +598,22 @@ contract USITest is Test {
 
         vm.stopPrank();
 
-        // 恢复合约
+        // Resume the contract
         vm.startPrank(owner);
         ussi.unpause();
         vm.stopPrank();
 
-        // 测试恢复后的操作
+        // Test operations after resuming
         vm.startPrank(hedger);
         ussi.applyRedeem(redeemOrder, orderSign);
         vm.stopPrank();
 
-        // 验证申请成功
+        // Verify the application is successful
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.PENDING));
     }
 
     function test_GetOrderHashs() public {
-        // 创建多个订单
+        // Create multiple orders
         for (uint256 i = 0; i < 3; i++) {
             USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
                 chain: "SETH",
@@ -640,20 +640,20 @@ contract USITest is Test {
             vm.stopPrank();
         }
 
-        // 获取订单哈希列表
+        // Get the list of order hashes
         bytes32[] memory orderHashs = ussi.getOrderHashs();
 
-        // 验证列表长度
+        // Verify the length of the list
         assertEq(orderHashs.length, 3);
         assertEq(ussi.getOrderHashLength(), 3);
 
-        // 验证可以通过索引获取订单哈希
+        // Verify the order hash can be retrieved by index
         bytes32 orderHash = ussi.getOrderHash(1);
         assertEq(orderHash, orderHashs[1]);
     }
 
     function test_CheckHedgeOrder() public {
-        // 创建有效的铸造订单
+        // Create a valid mint order
         USSI.HedgeOrder memory validMintOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -671,10 +671,10 @@ contract USITest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 测试有效订单
+        // Test a valid order
         ussi.checkHedgeOrder(validMintOrder, orderHash, orderSign);
 
-        // 测试链不匹配
+        // Test mismatched chain
         USSI.HedgeOrder memory wrongChainOrder = validMintOrder;
         wrongChainOrder.chain = "ETH";
         orderHash = keccak256(abi.encode(wrongChainOrder));
@@ -684,7 +684,7 @@ contract USITest is Test {
         vm.expectRevert("chain not match");
         ussi.checkHedgeOrder(wrongChainOrder, orderHash, orderSign);
 
-        // 测试不支持的资产ID
+        // Test unsupported asset ID
         USSI.HedgeOrder memory wrongAssetOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -705,7 +705,7 @@ contract USITest is Test {
         vm.expectRevert("assetID not supported");
         ussi.checkHedgeOrder(wrongAssetOrder, orderHash, orderSign);
 
-        // 测试过期订单
+        // Test expired order
         USSI.HedgeOrder memory expiredOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -726,7 +726,7 @@ contract USITest is Test {
         vm.expectRevert("expired");
         ussi.checkHedgeOrder(expiredOrder, orderHash, orderSign);
 
-        // 测试无效签名
+        // Test invalid signature
         bytes memory wrongSign = abi.encodePacked(bytes32(0), bytes32(0), uint8(0));
 
         vm.expectRevert("signature not valid");
@@ -746,7 +746,7 @@ contract USITest is Test {
         vm.startPrank(owner);
         USSI newUSSI = new USSI();
 
-        // 测试工厂地址为零
+        // Test zero factory address
         vm.expectRevert("zero factory address");
         address(
             new ERC1967Proxy(
@@ -755,7 +755,7 @@ contract USITest is Test {
             )
         );
 
-        // 测试赎回代币地址为零
+        // Test zero redeem token address
         vm.expectRevert("zero redeem token address");
         address(
             new ERC1967Proxy(
@@ -764,7 +764,7 @@ contract USITest is Test {
             )
         );
 
-        // 测试订单签名者地址为零
+        // Test zero order signer address
         vm.expectRevert("zero order signer address");
         address(
             new ERC1967Proxy(
@@ -776,7 +776,7 @@ contract USITest is Test {
     }
 
     function test_CheckHedgeOrder_Redeem() public {
-        // 创建赎回订单
+        // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -794,10 +794,10 @@ contract USITest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 测试正常赎回订单
+        // Test a normal redeem order
         ussi.checkHedgeOrder(redeemOrder, orderHash, orderSign);
 
-        // 测试接收者地址为零
+        // Test zero receiver address
         USSI.HedgeOrder memory zeroReceiverOrder = redeemOrder;
         zeroReceiverOrder.receiver = address(0);
         orderHash = keccak256(abi.encode(zeroReceiverOrder));
@@ -806,7 +806,7 @@ contract USITest is Test {
         vm.expectRevert("receiver is zero address");
         ussi.checkHedgeOrder(zeroReceiverOrder, orderHash, orderSign);
 
-        // 测试不支持的赎回代币
+        // Test unsupported redeem token
         USSI.HedgeOrder memory wrongRedeemTokenOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -828,7 +828,7 @@ contract USITest is Test {
     }
 
     function test_ApplyMint_Revert() public {
-        // 创建铸造订单
+        // Create a mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -846,13 +846,13 @@ contract USITest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 测试没有PARTICIPANT_ROLE权限
+        // Test no PARTICIPANT_ROLE permission
         vm.startPrank(hedger);
         vm.expectRevert();
         ussi.applyMint(mintOrder, orderSign);
         vm.stopPrank();
 
-        // 授予权限后测试暂停状态
+        // Test paused state after granting permission
         vm.startPrank(owner);
         ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
         ussi.pause();
@@ -863,23 +863,23 @@ contract USITest is Test {
         ussi.applyMint(mintOrder, orderSign);
         vm.stopPrank();
 
-        // 恢复合约并测试资产转移失败
+        // Resume the contract and test asset transfer failure
         vm.startPrank(owner);
         ussi.unpause();
         vm.stopPrank();
 
         vm.startPrank(hedger);
-        // 不批准资产转移
+        // Do not approve asset transfer
         vm.expectRevert("not enough allowance");
         ussi.applyMint(mintOrder, orderSign);
         vm.stopPrank();
     }
 
     function test_ApplyRedeem_Revert() public {
-        // 先铸造USSI代币
+        // Mint USSI tokens first
         deal(address(ussi), hedger, USSI_AMOUNT);
 
-        // 创建赎回订单
+        // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -897,13 +897,13 @@ contract USITest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 测试没有PARTICIPANT_ROLE权限
+        // Test no PARTICIPANT_ROLE permission
         vm.startPrank(hedger);
         vm.expectRevert();
         ussi.applyRedeem(redeemOrder, orderSign);
         vm.stopPrank();
 
-        // 授予权限后测试暂停状态
+        // Test paused state after granting permission
         vm.startPrank(owner);
         ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
         ussi.pause();
@@ -914,20 +914,20 @@ contract USITest is Test {
         ussi.applyRedeem(redeemOrder, orderSign);
         vm.stopPrank();
 
-        // 恢复合约并测试代币转移失败
+        // Resume the contract and test token transfer failure
         vm.startPrank(owner);
         ussi.unpause();
         vm.stopPrank();
 
         vm.startPrank(hedger);
-        // 不批准代币转移
+        // Do not approve token transfer
         vm.expectRevert("not enough allowance");
         ussi.applyRedeem(redeemOrder, orderSign);
         vm.stopPrank();
     }
 
     function test_ConfirmMint_Revert() public {
-        // 创建铸造订单
+        // Create a mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -945,13 +945,13 @@ contract USITest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 测试订单不存在
+        // Test non-existent order
         vm.startPrank(owner);
         vm.expectRevert("order not exists");
         ussi.confirmMint(orderHash);
         vm.stopPrank();
 
-        // 申请铸造
+        // Apply for minting
         vm.startPrank(owner);
         ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
         vm.stopPrank();
@@ -961,13 +961,13 @@ contract USITest is Test {
         ussi.applyMint(mintOrder, orderSign);
         vm.stopPrank();
 
-        // 测试非owner确认
+        // Test non-owner confirmation
         vm.startPrank(hedger);
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, hedger));
         ussi.confirmMint(orderHash);
         vm.stopPrank();
 
-        // 测试订单类型不匹配
+        // Test mismatched order type
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -998,7 +998,7 @@ contract USITest is Test {
     }
 
     function test_ConfirmRedeem_Revert() public {
-        // 创建赎回订单
+        // Create a redeem order
         deal(address(ussi), hedger, USSI_AMOUNT);
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
@@ -1017,13 +1017,13 @@ contract USITest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 测试订单不存在
+        // Test non-existent order
         vm.startPrank(owner);
         vm.expectRevert("order not exists");
         ussi.confirmRedeem(orderHash, bytes32(0));
         vm.stopPrank();
 
-        // 申请赎回
+        // Apply for redemption
         vm.startPrank(owner);
         ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
         vm.stopPrank();
@@ -1033,13 +1033,13 @@ contract USITest is Test {
         ussi.applyRedeem(redeemOrder, orderSign);
         vm.stopPrank();
 
-        // 测试非owner确认
+        // Test non-owner confirmation
         vm.startPrank(hedger);
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, hedger));
         ussi.confirmRedeem(orderHash, bytes32(0));
         vm.stopPrank();
 
-        // 测试订单类型不匹配
+        // Test mismatched order type
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -1067,7 +1067,7 @@ contract USITest is Test {
         ussi.confirmRedeem(mintOrderHash, bytes32(0));
         vm.stopPrank();
 
-        // 测试赎回代币余额不足
+        // Test insufficient redeem token balance
         vm.startPrank(owner);
         vm.expectRevert("not enough redeem token");
         ussi.confirmRedeem(orderHash, bytes32(0));
@@ -1075,7 +1075,7 @@ contract USITest is Test {
     }
 
     function test_CancelMint_Revert() public {
-        // 创建铸造订单
+        // Create a mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
@@ -1093,13 +1093,13 @@ contract USITest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 测试订单不存在
+        // Test non-existent order
         vm.startPrank(hedger);
         vm.expectRevert("order not exists");
         ussi.cancelMint(orderHash);
         vm.stopPrank();
 
-        // 申请铸造
+        // Apply for minting
         vm.startPrank(owner);
         ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
         vm.stopPrank();
@@ -1108,7 +1108,7 @@ contract USITest is Test {
         assetToken.approve(address(ussi), MINT_AMOUNT);
         ussi.applyMint(mintOrder, orderSign);
 
-        // 测试订单类型不匹配
+        // Test mismatched order type
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
@@ -1136,7 +1136,7 @@ contract USITest is Test {
     }
 
     function test_CancelRedeem_Revert() public {
-        // 创建赎回订单
+        // Create a redeem order
         deal(address(ussi), hedger, USSI_AMOUNT);
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
             chain: "SETH",
@@ -1155,13 +1155,13 @@ contract USITest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // 测试订单不存在
+        // Test non-existent order
         vm.startPrank(hedger);
         vm.expectRevert("order not exists");
         ussi.cancelRedeem(orderHash);
         vm.stopPrank();
 
-        // 申请赎回
+        // Apply for redemption
         vm.startPrank(owner);
         ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
         vm.stopPrank();
@@ -1170,7 +1170,7 @@ contract USITest is Test {
         ussi.approve(address(ussi), USSI_AMOUNT);
         ussi.applyRedeem(redeemOrder, orderSign);
 
-        // 测试订单类型不匹配
+        // Test mismatched order type
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
             chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,

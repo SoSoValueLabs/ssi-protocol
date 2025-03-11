@@ -26,14 +26,14 @@ contract AssetFactoryTest is Test {
     string constant CHAIN = "SETH";
 
     function setUp() public {
-        // 创建模拟代币
+        // Create mock tokens
         WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
         WETH = new MockToken("Wrapped ETH", "WETH", 18);
 
-        // 部署AssetToken实现合约
+        // Deploy AssetToken implementation contract
         tokenImpl = new AssetToken();
 
-        // 部署AssetFactory合约
+        // Deploy AssetFactory contract
         AssetFactory factoryImpl = new AssetFactory();
         address factoryAddress = address(
             new ERC1967Proxy(
@@ -62,7 +62,7 @@ contract AssetFactoryTest is Test {
     }
 
     function test_Initialize() public {
-        // 验证初始化参数
+        // Verify initialization parameters
         assertEq(factory.vault(), vault);
         assertEq(factory.chain(), CHAIN);
         assertEq(factory.tokenImpl(), address(tokenImpl));
@@ -72,12 +72,12 @@ contract AssetFactoryTest is Test {
     function test_CreateAssetToken() public {
         vm.startPrank(owner);
 
-        // 创建资产代币
+        // Create asset token
         Asset memory asset = getAsset(1);
         uint256 maxFee = 10000;
         address assetTokenAddress = factory.createAssetToken(asset, maxFee, issuer, rebalancer, feeManager, swap);
 
-        // 验证资产代币创建成功
+        // Verify asset token creation success
         assertEq(factory.getAssetIDs().length, 1);
         assertEq(factory.getAssetIDs()[0], 1);
         assertEq(factory.assetTokens(1), assetTokenAddress);
@@ -87,12 +87,12 @@ contract AssetFactoryTest is Test {
         assertEq(factory.swaps(1), swap);
         assertEq(factory.tokenImpls(1), address(tokenImpl));
 
-        // 验证资产代币初始化正确
+        // Verify asset token initialization correctness
         IAssetToken assetToken = IAssetToken(assetTokenAddress);
         assertEq(assetToken.id(), 1);
         assertEq(assetToken.maxFee(), maxFee);
 
-        // 验证角色分配正确
+        // Verify role assignments
         assertTrue(assetToken.hasRole(assetToken.ISSUER_ROLE(), issuer));
         assertTrue(assetToken.hasRole(assetToken.REBALANCER_ROLE(), rebalancer));
         assertTrue(assetToken.hasRole(assetToken.FEEMANAGER_ROLE(), feeManager));
@@ -103,11 +103,11 @@ contract AssetFactoryTest is Test {
     function test_CreateDuplicateAssetToken() public {
         vm.startPrank(owner);
 
-        // 创建第一个资产代币
+        // Create the first asset token
         Asset memory asset = getAsset(1);
         factory.createAssetToken(asset, 10000, issuer, rebalancer, feeManager, swap);
 
-        // 尝试创建相同ID的资产代币，应该失败
+        // Attempt to create an asset token with the same ID, should fail
         vm.expectRevert("asset exists");
         factory.createAssetToken(asset, 10000, issuer, rebalancer, feeManager, swap);
 
@@ -117,7 +117,7 @@ contract AssetFactoryTest is Test {
     function test_CreateAssetTokenWithZeroAddresses() public {
         vm.startPrank(owner);
 
-        // 尝试创建资产代币，但控制器地址为零地址，应该失败
+        // Attempt to create an asset token with zero addresses for controllers, should fail
         Asset memory asset = getAsset(1);
         vm.expectRevert("controllers not set");
         factory.createAssetToken(asset, 10000, address(0), rebalancer, feeManager, swap);
@@ -134,26 +134,26 @@ contract AssetFactoryTest is Test {
     function test_SetSwap() public {
         vm.startPrank(owner);
 
-        // 创建资产代币
+        // Create an asset token
         Asset memory asset = getAsset(1);
         factory.createAssetToken(asset, 10000, issuer, rebalancer, feeManager, swap);
 
-        // 设置新的swap地址
+        // Set a new swap address
         address newSwap = vm.addr(0x7);
         factory.setSwap(1, newSwap);
 
-        // 验证swap地址已更新
+        // Verify the swap address has been updated
         assertEq(factory.swaps(1), newSwap);
 
-        // 尝试设置相同的swap地址，应该失败
+        // Attempt to set the same swap address again, should fail
         vm.expectRevert("swap address not change");
         factory.setSwap(1, newSwap);
 
-        // 尝试设置零地址，应该失败
+        // Attempt to set a zero address, should fail
         vm.expectRevert("swap address is zero");
         factory.setSwap(1, address(0));
 
-        // 尝试为不存在的资产ID设置swap地址，应该失败
+        // Attempt to set a swap address for a non-existent asset ID, should fail
         vm.expectRevert("asset not exist");
         factory.setSwap(2, newSwap);
 
@@ -163,14 +163,14 @@ contract AssetFactoryTest is Test {
     function test_SetVault() public {
         vm.startPrank(owner);
 
-        // 设置新的vault地址
+        // Set a new vault address
         address newVault = vm.addr(0x7);
         factory.setVault(newVault);
 
-        // 验证vault地址已更新
+        // Verify the vault address has been updated
         assertEq(factory.vault(), newVault);
 
-        // 尝试设置零地址，应该失败
+        // Attempt to set a zero address, should fail
         vm.expectRevert("vault address is zero");
         factory.setVault(address(0));
 
@@ -180,20 +180,20 @@ contract AssetFactoryTest is Test {
     function test_SetTokenImpl() public {
         vm.startPrank(owner);
 
-        // 部署新的AssetToken实现合约
+        // Deploy a new AssetToken implementation contract
         AssetToken newTokenImpl = new AssetToken();
 
-        // 设置新的tokenImpl地址
+        // Set the new tokenImpl address
         factory.setTokenImpl(address(newTokenImpl));
 
-        // 验证tokenImpl地址已更新
+        // Verify the tokenImpl address has been updated
         assertEq(factory.tokenImpl(), address(newTokenImpl));
 
-        // 尝试设置相同的tokenImpl地址，应该失败
+        // Attempt to set the same tokenImpl address again, should fail
         vm.expectRevert("token impl is not change");
         factory.setTokenImpl(address(newTokenImpl));
 
-        // 尝试设置零地址，应该失败
+        // Attempt to set a zero address, should fail
         vm.expectRevert("token impl address is zero");
         factory.setTokenImpl(address(0));
 
@@ -203,29 +203,29 @@ contract AssetFactoryTest is Test {
     function test_UpgradeTokenImpl() public {
         vm.startPrank(owner);
 
-        // 创建两个资产代币
+        // Create two asset tokens
         Asset memory asset1 = getAsset(1);
         Asset memory asset2 = getAsset(2);
         factory.createAssetToken(asset1, 10000, issuer, rebalancer, feeManager, swap);
         factory.createAssetToken(asset2, 10000, issuer, rebalancer, feeManager, swap);
 
-        // 部署新的AssetToken实现合约
+        // Deploy a new AssetToken implementation contract
         AssetToken newTokenImpl = new AssetToken();
         factory.setTokenImpl(address(newTokenImpl));
 
-        // 升级第一个资产代币的实现
+        // Upgrade the implementation of the first asset token
         uint256[] memory assetIDs = new uint256[](1);
         assetIDs[0] = 1;
         factory.upgradeTokenImpl(assetIDs);
 
-        // 验证第一个资产代币的实现已升级
+        // Verify the implementation of the first asset token has been upgraded
         assertEq(factory.tokenImpls(1), address(newTokenImpl));
 
-        // 尝试再次升级已升级的资产代币，应该失败
+        // Attempt to upgrade the already upgraded asset token again, should fail
         vm.expectRevert("asset token already upgraded");
         factory.upgradeTokenImpl(assetIDs);
 
-        // 尝试升级不存在的资产代币，应该失败
+        // Attempt to upgrade a non-existent asset token, should fail
         assetIDs[0] = 3;
         vm.expectRevert("asset not exist");
         factory.upgradeTokenImpl(assetIDs);
@@ -236,25 +236,25 @@ contract AssetFactoryTest is Test {
     function test_SetIssuer() public {
         vm.startPrank(owner);
 
-        // 创建资产代币
+        // Create an asset token
         Asset memory asset = getAsset(1);
         address assetTokenAddress = factory.createAssetToken(asset, 10000, issuer, rebalancer, feeManager, swap);
         IAssetToken assetToken = IAssetToken(assetTokenAddress);
 
-        // 设置新的issuer地址
+        // Set a new issuer address
         address newIssuer = vm.addr(0x7);
         factory.setIssuer(1, newIssuer);
 
-        // 验证issuer地址已更新
+        // Verify the issuer address has been updated
         assertEq(factory.issuers(1), newIssuer);
         assertTrue(assetToken.hasRole(assetToken.ISSUER_ROLE(), newIssuer));
         assertFalse(assetToken.hasRole(assetToken.ISSUER_ROLE(), issuer));
 
-        // 尝试设置零地址，应该失败
+        // Attempt to set a zero address, should fail
         vm.expectRevert("issuer is zero address");
         factory.setIssuer(1, address(0));
 
-        // 尝试为不存在的资产ID设置issuer地址，应该失败
+        // Attempt to set an issuer address for a non-existent asset ID, should fail
         vm.expectRevert("assetID not exists");
         factory.setIssuer(2, newIssuer);
 
@@ -264,25 +264,25 @@ contract AssetFactoryTest is Test {
     function test_SetRebalancer() public {
         vm.startPrank(owner);
 
-        // 创建资产代币
+        // Create an asset token
         Asset memory asset = getAsset(1);
         address assetTokenAddress = factory.createAssetToken(asset, 10000, issuer, rebalancer, feeManager, swap);
         IAssetToken assetToken = IAssetToken(assetTokenAddress);
 
-        // 设置新的rebalancer地址
+        // Set a new rebalancer address
         address newRebalancer = vm.addr(0x7);
         factory.setRebalancer(1, newRebalancer);
 
-        // 验证rebalancer地址已更新
+        // Verify the rebalancer address has been updated
         assertEq(factory.rebalancers(1), newRebalancer);
         assertTrue(assetToken.hasRole(assetToken.REBALANCER_ROLE(), newRebalancer));
         assertFalse(assetToken.hasRole(assetToken.REBALANCER_ROLE(), rebalancer));
 
-        // 尝试设置零地址，应该失败
+        // Attempt to set a zero address, should fail
         vm.expectRevert("rebalancer is zero address");
         factory.setRebalancer(1, address(0));
 
-        // 尝试为不存在的资产ID设置rebalancer地址，应该失败
+        // Attempt to set a rebalancer address for a non-existent asset ID, should fail
         vm.expectRevert("assetID not exists");
         factory.setRebalancer(2, newRebalancer);
 
@@ -292,25 +292,25 @@ contract AssetFactoryTest is Test {
     function test_SetFeeManager() public {
         vm.startPrank(owner);
 
-        // 创建资产代币
+        // Create an asset token
         Asset memory asset = getAsset(1);
         address assetTokenAddress = factory.createAssetToken(asset, 10000, issuer, rebalancer, feeManager, swap);
         IAssetToken assetToken = IAssetToken(assetTokenAddress);
 
-        // 设置新的feeManager地址
+        // Set a new feeManager address
         address newFeeManager = vm.addr(0x7);
         factory.setFeeManager(1, newFeeManager);
 
-        // 验证feeManager地址已更新
+        // Verify the feeManager address has been updated
         assertEq(factory.feeManagers(1), newFeeManager);
         assertTrue(assetToken.hasRole(assetToken.FEEMANAGER_ROLE(), newFeeManager));
         assertFalse(assetToken.hasRole(assetToken.FEEMANAGER_ROLE(), feeManager));
 
-        // 尝试设置零地址，应该失败
+        // Attempt to set a zero address, should fail
         vm.expectRevert("feeManager is zero address");
         factory.setFeeManager(1, address(0));
 
-        // 尝试为不存在的资产ID设置feeManager地址，应该失败
+        // Attempt to set a feeManager address for a non-existent asset ID, should fail
         vm.expectRevert("assetID not exists");
         factory.setFeeManager(2, newFeeManager);
 
@@ -320,14 +320,14 @@ contract AssetFactoryTest is Test {
     function test_HasAssetID() public {
         vm.startPrank(owner);
 
-        // 初始状态下，应该没有任何资产ID
+        // Initially, there should be no asset IDs
         assertFalse(factory.hasAssetID(1));
 
-        // 创建资产代币
+        // Create an asset token
         Asset memory asset = getAsset(1);
         factory.createAssetToken(asset, 10000, issuer, rebalancer, feeManager, swap);
 
-        // 验证资产ID存在
+        // Verify the asset ID exists
         assertTrue(factory.hasAssetID(1));
         assertFalse(factory.hasAssetID(2));
 
@@ -337,10 +337,10 @@ contract AssetFactoryTest is Test {
     function test_GetAssetIDs() public {
         vm.startPrank(owner);
 
-        // 初始状态下，应该没有任何资产ID
+        // Initially, there should be no asset IDs
         assertEq(factory.getAssetIDs().length, 0);
 
-        // 创建多个资产代币
+        // Create multiple asset tokens
         Asset memory asset1 = getAsset(1);
         Asset memory asset2 = getAsset(2);
         Asset memory asset3 = getAsset(3);
@@ -348,7 +348,7 @@ contract AssetFactoryTest is Test {
         factory.createAssetToken(asset2, 10000, issuer, rebalancer, feeManager, swap);
         factory.createAssetToken(asset3, 10000, issuer, rebalancer, feeManager, swap);
 
-        // 验证资产ID列表
+        // Verify the asset ID list
         uint256[] memory assetIDs = factory.getAssetIDs();
         assertEq(assetIDs.length, 3);
         assertEq(assetIDs[0], 1);
@@ -361,20 +361,20 @@ contract AssetFactoryTest is Test {
     function test_Upgrade() public {
         vm.startPrank(owner);
 
-        // 创建资产代币
+        // Create an asset token
         Asset memory asset = getAsset(1);
         factory.createAssetToken(asset, 10000, issuer, rebalancer, feeManager, swap);
 
-        // 部署新的AssetFactory实现合约
+        // Deploy a new AssetFactory implementation contract
         AssetFactory newFactoryImpl = new AssetFactory();
 
-        // 升级AssetFactory合约
+        // Upgrade the AssetFactory contract
         factory.upgradeToAndCall(address(newFactoryImpl), new bytes(0));
 
-        // 验证升级成功
+        // Verify the upgrade was successful
         assertEq(Upgrades.getImplementationAddress(address(factory)), address(newFactoryImpl));
 
-        // 验证状态保持不变
+        // Verify the state remains unchanged
         assertEq(factory.vault(), vault);
         assertEq(factory.chain(), CHAIN);
         assertEq(factory.tokenImpl(), address(tokenImpl));
@@ -386,62 +386,62 @@ contract AssetFactoryTest is Test {
     function test_SetControllerWithLock() public {
         vm.startPrank(owner);
 
-        // 创建资产代币
+        // Create an asset token
         Asset memory asset = getAsset(1);
         address assetTokenAddress = factory.createAssetToken(asset, 10000, issuer, rebalancer, feeManager, swap);
         IAssetToken assetToken = IAssetToken(assetTokenAddress);
 
-        // 锁定发行
+        // Lock issuance
         vm.startPrank(issuer);
         assetToken.lockIssue();
         vm.stopPrank();
 
-        // 尝试在锁定状态下设置新的issuer，应该失败
+        // Attempt to set a new issuer while locked, should fail
         vm.startPrank(owner);
         vm.expectRevert("is issuing");
         factory.setIssuer(1, vm.addr(0x7));
 
-        // 解锁发行
+        // Unlock issuance
         vm.startPrank(issuer);
         assetToken.unlockIssue();
         vm.stopPrank();
 
-        // 锁定重新平衡
+        // Lock rebalancing
         vm.startPrank(rebalancer);
         assetToken.lockRebalance();
         vm.stopPrank();
 
-        // 尝试在锁定状态下设置新的rebalancer，应该失败
+        // Attempt to set a new rebalancer while locked, should fail
         vm.startPrank(owner);
         vm.expectRevert("is rebalancing");
         factory.setRebalancer(1, vm.addr(0x7));
 
-        // 解锁重新平衡
+        // Unlock rebalancing
         vm.startPrank(rebalancer);
         assetToken.unlockRebalance();
         vm.stopPrank();
 
-        // 锁定燃烧费用
+        // Lock burn fee
         vm.startPrank(feeManager);
         assetToken.lockBurnFee();
         vm.stopPrank();
 
-        // 尝试在锁定状态下设置新的feeManager，应该失败
+        // Attempt to set a new feeManager while locked, should fail
         vm.startPrank(owner);
         vm.expectRevert("is burning fee");
         factory.setFeeManager(1, vm.addr(0x7));
 
-        // 解锁燃烧费用
+        // Unlock burn fee
         vm.startPrank(feeManager);
         assetToken.unlockBurnFee();
         vm.stopPrank();
 
-        // 锁定发行
+        // Lock issuance
         vm.startPrank(issuer);
         assetToken.lockIssue();
         vm.stopPrank();
 
-        // 尝试在锁定状态下设置新的swap，应该失败
+        // Attempt to set a new swap while locked, should fail
         vm.startPrank(owner);
         vm.expectRevert("is issuing");
         factory.setSwap(1, vm.addr(0x7));

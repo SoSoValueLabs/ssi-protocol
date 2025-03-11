@@ -39,14 +39,14 @@ contract AssetFeeManagerTest is Test {
 
         vm.startPrank(owner);
 
-        // 部署Swap合约
+        // Deploy Swap contract
         swap = Swap(address(new ERC1967Proxy(address(new Swap()), abi.encodeCall(Swap.initialize, (owner, "SETH")))));
 
-        // 部署AssetToken和AssetFactory实现合约
+        // Deploy AssetToken and AssetFactory implementation contracts
         tokenImpl = new AssetToken();
         factoryImpl = new AssetFactory();
 
-        // 部署AssetFactory代理合约
+        // Deploy AssetFactory proxy contract
         address factoryAddress = address(
             new ERC1967Proxy(
                 address(factoryImpl),
@@ -55,7 +55,7 @@ contract AssetFeeManagerTest is Test {
         );
         factory = AssetFactory(factoryAddress);
 
-        // 部署AssetIssuer代理合约
+        // Deploy AssetIssuer proxy contract
         issuer = AssetIssuer(
             address(
                 new ERC1967Proxy(
@@ -64,7 +64,7 @@ contract AssetFeeManagerTest is Test {
             )
         );
 
-        // 部署AssetRebalancer代理合约
+        // Deploy AssetRebalancer proxy contract
         rebalancer = AssetRebalancer(
             address(
                 new ERC1967Proxy(
@@ -74,7 +74,7 @@ contract AssetFeeManagerTest is Test {
             )
         );
 
-        // 部署AssetFeeManager代理合约
+        // Deploy AssetFeeManager proxy contract
         feeManager = AssetFeeManager(
             address(
                 new ERC1967Proxy(
@@ -84,7 +84,7 @@ contract AssetFeeManagerTest is Test {
             )
         );
 
-        // 设置Swap角色和白名单
+        // Set Swap roles and whitelist
         swap.grantRole(swap.MAKER_ROLE(), pmm);
         swap.grantRole(swap.TAKER_ROLE(), address(issuer));
         swap.grantRole(swap.TAKER_ROLE(), address(rebalancer));
@@ -95,7 +95,7 @@ contract AssetFeeManagerTest is Test {
         outWhiteAddresses[1] = vm.toString(vault);
         swap.setTakerAddresses(outWhiteAddresses, outWhiteAddresses);
 
-        // 添加代币白名单
+        // Add tokens to whitelist
         Token[] memory whiteListTokens = new Token[](2);
         whiteListTokens[0] = Token({
             chain: "SETH",
@@ -145,7 +145,7 @@ contract AssetFeeManagerTest is Test {
         issuer.setIssueAmountRange(assetToken.id(), Range({min: 10 * 10 ** 8, max: 10000 * 10 ** 8}));
         issuer.addParticipant(assetToken.id(), ap);
 
-        // 铸造一些代币用于测试
+        // Mint some tokens for testing
         vm.startPrank(address(issuer));
         assetToken.mint(ap, 1000 * 10 ** 8);
         vm.stopPrank();
@@ -178,7 +178,7 @@ contract AssetFeeManagerTest is Test {
         address assetTokenAddress = createAssetToken();
         AssetToken assetToken = AssetToken(assetTokenAddress);
 
-        // 前进时间以便收集费用
+        // Advance time to collect fees
         vm.warp(block.timestamp + 2 days);
         feeManager.collectFeeTokenset(assetToken.id());
 
@@ -227,29 +227,29 @@ contract AssetFeeManagerTest is Test {
         return orderInfo;
     }
 
-    // 测试设置费用
+    // Test setting fees
     function test_SetFee() public {
         address assetTokenAddress = createAssetToken();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
-        uint256 newFee = 5000; // 0.5%
+        uint256 newFee = 5000;
 
         vm.startPrank(owner);
 
-        // 确保费用已收集
+        // Ensure fees have been collected
         vm.warp(block.timestamp + 1 days);
         feeManager.collectFeeTokenset(assetID);
 
-        // 设置新的费用
+        // Set new fee
         feeManager.setFee(assetID, newFee);
 
-        // 验证费用已更新
+        // Verify fee has been updated
         assertEq(assetToken.fee(), newFee);
 
         vm.stopPrank();
     }
 
-    // 测试收集费用
+    // Test collecting fees
     function test_CollectFeeTokenset() public {
         address assetTokenAddress = createAssetToken();
         AssetToken assetToken = AssetToken(assetTokenAddress);
@@ -257,34 +257,34 @@ contract AssetFeeManagerTest is Test {
 
         vm.startPrank(owner);
 
-        // 初始状态下应该没有费用
+        // Initially, there should be no fees
         assertEq(assetToken.getFeeTokenset().length, 0);
 
-        // 前进时间以便收集费用
+        // Advance time to collect fees
         vm.warp(block.timestamp + 2 days);
         feeManager.collectFeeTokenset(assetID);
 
-        // 验证费用已收集
+        // Verify fees have been collected
         assertEq(assetToken.getFeeTokenset().length, 1);
         assertTrue(assetToken.getFeeTokenset()[0].amount > 0);
 
         vm.stopPrank();
     }
 
-    // 测试添加燃烧费用请求
+    // Test adding a burn fee request
     function test_AddBurnFeeRequest() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息
+        // Create order info
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
 
-        // 添加燃烧费用请求
+        // Add burn fee request
         vm.startPrank(owner);
         uint256 nonce = feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // 验证请求已添加
+        // Verify request has been added
         Request memory request = feeManager.getBurnFeeRequest(nonce);
         assertEq(request.nonce, nonce);
         assertEq(request.requester, owner);
@@ -293,24 +293,24 @@ contract AssetFeeManagerTest is Test {
         assertEq(request.orderHash, orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(RequestStatus.PENDING));
 
-        // 验证资产代币已锁定燃烧费用
+        // Verify asset token has locked burn fee
         assertTrue(assetToken.burningFee());
 
         vm.stopPrank();
     }
 
-    // 测试拒绝燃烧费用请求
+    // Test rejecting a burn fee request
     function test_RejectBurnFeeRequest() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息并添加请求
+        // Create order info and add request
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         vm.startPrank(owner);
         uint256 nonce = feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // PMM拒绝交换请求
+        // PMM rejects swap request
         vm.stopPrank();
         vm.startPrank(pmm);
         swap.makerRejectSwapRequest(orderInfo);
@@ -318,52 +318,52 @@ contract AssetFeeManagerTest is Test {
 
         vm.startPrank(owner);
 
-        // 拒绝燃烧费用请求
+        // Reject burn fee request
         feeManager.rejectBurnFeeRequest(nonce);
 
-        // 验证请求已拒绝
+        // Verify request has been rejected
         Request memory request = feeManager.getBurnFeeRequest(nonce);
         assertEq(uint256(request.status), uint256(RequestStatus.REJECTED));
 
-        // 验证资产代币已解锁燃烧费用
+        // Verify asset token has unlocked burn fee
         assertFalse(assetToken.burningFee());
 
         vm.stopPrank();
     }
 
-    // 测试确认燃烧费用请求
+    // Test confirming a burn fee request
     function test_ConfirmBurnFeeRequest() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息并添加请求
+        // Create order info and add request
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         vm.startPrank(owner);
 
         uint256 nonce = feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // 记录燃烧前的费用代币集
+        // Record fee tokenset before burning
         Token[] memory feeTokensetBefore = assetToken.getFeeTokenset();
         assertTrue(feeTokensetBefore.length > 0);
 
         vm.stopPrank();
 
-        // PMM确认交换请求
+        // PMM confirms swap request
         pmmConfirmSwapRequest(orderInfo, true);
 
         vm.startPrank(owner);
 
-        // 确认燃烧费用请求
+        // Confirm burn fee request
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "txHash";
         feeManager.confirmBurnFeeRequest(nonce, orderInfo, inTxHashs);
 
-        // 验证请求已确认
+        // Verify request has been confirmed
         Request memory request = feeManager.getBurnFeeRequest(nonce);
         assertEq(uint256(request.status), uint256(RequestStatus.CONFIRMED));
 
-        // 验证费用代币已燃烧
+        // Verify fee tokens have been burned
         Token[] memory feeTokensetAfter = assetToken.getFeeTokenset();
         if (feeTokensetAfter.length > 0) {
             assertLt(feeTokensetAfter[0].amount, feeTokensetBefore[0].amount);
@@ -371,44 +371,44 @@ contract AssetFeeManagerTest is Test {
             assertEq(feeTokensetAfter.length, 0);
         }
 
-        // 验证资产代币已解锁燃烧费用
+        // Verify asset token has unlocked burn fee
         assertFalse(assetToken.burningFee());
 
         vm.stopPrank();
     }
 
-    // 测试获取燃烧费用请求长度
+    // Test getting burn fee request length
     function test_GetBurnFeeRequestLength() public {
         address assetTokenAddress = mintAndCollectFee();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 初始长度应为0
+        // Initially, length should be 0
         assertEq(feeManager.getBurnFeeRequestLength(), 0);
 
-        // 添加请求
+        // Add request
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         vm.startPrank(owner);
 
         feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // 验证长度增加
+        // Verify length has increased
         assertEq(feeManager.getBurnFeeRequestLength(), 1);
 
         vm.stopPrank();
     }
 
-    // 测试获取燃烧费用请求
+    // Test getting burn fee request
     function test_GetBurnFeeRequest() public {
         address assetTokenAddress = mintAndCollectFee();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 添加请求
+        // Add request
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         vm.startPrank(owner);
 
         uint256 nonce = feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // 获取并验证请求
+        // Get and verify request
         Request memory request = feeManager.getBurnFeeRequest(nonce);
         assertEq(request.nonce, nonce);
         assertEq(request.requester, owner);
@@ -417,7 +417,7 @@ contract AssetFeeManagerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试错误情况：非所有者调用
+    // Test error case: non-owner calls
     function test_OnlyOwnerFunctions() public {
         address assetTokenAddress = mintAndCollectFee();
         uint256 assetID = AssetToken(assetTokenAddress).id();
@@ -425,19 +425,19 @@ contract AssetFeeManagerTest is Test {
 
         vm.startPrank(nonOwner);
 
-        // 尝试设置费用
+        // Attempt to set fee
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         feeManager.setFee(assetID, 5000);
 
-        // 尝试收集费用
+        // Attempt to collect fees
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         feeManager.collectFeeTokenset(assetID);
 
-        // 尝试添加燃烧费用请求
+        // Attempt to add burn fee request
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // 添加一个请求用于后续测试
+        // Add a request for subsequent tests
         vm.stopPrank();
         vm.startPrank(owner);
         uint256 nonce = feeManager.addBurnFeeRequest(assetID, orderInfo);
@@ -445,11 +445,11 @@ contract AssetFeeManagerTest is Test {
 
         vm.startPrank(nonOwner);
 
-        // 尝试拒绝燃烧费用请求
+        // Attempt to reject burn fee request
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         feeManager.rejectBurnFeeRequest(nonce);
 
-        // 尝试确认燃烧费用请求
+        // Attempt to confirm burn fee request
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "txHash";
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
@@ -458,30 +458,30 @@ contract AssetFeeManagerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试错误情况：设置费用时资产代币没有收集费用
+    // Test error case: setting fee when asset token has not collected fees
     function test_SetFee_NotCollected() public {
         address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 确保lastCollectTimestamp已经过期（超过1天）
+        // Ensure lastCollectTimestamp has expired (over 1 day)
         vm.warp(block.timestamp + 2 days);
 
         vm.startPrank(owner);
 
-        // 尝试设置费用，但费用尚未收集
+        // Attempt to set fee, but fees have not been collected
         vm.expectRevert("has fee not collected");
         feeManager.setFee(assetID, 5000);
 
         vm.stopPrank();
     }
-    // 测试错误情况：非费用管理者调用
 
+    // Test error case: non-fee manager calls
     function test_NotFeeManager() public {
         address assetTokenAddress = createAssetToken();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建一个新的费用管理者，但不授予角色
+        // Create a new fee manager without granting the role
         AssetFeeManager newFeeManager = AssetFeeManager(
             address(
                 new ERC1967Proxy(
@@ -493,100 +493,100 @@ contract AssetFeeManagerTest is Test {
 
         vm.startPrank(owner);
 
-        // 确保费用已收集
+        // Ensure fees have been collected
         vm.warp(block.timestamp + 1 days);
         feeManager.collectFeeTokenset(assetID);
 
-        // 尝试使用新的费用管理者设置费用
+        // Attempt to set fee using the new fee manager
         vm.expectRevert("not a fee manager");
         newFeeManager.setFee(assetID, 5000);
 
-        // 尝试使用新的费用管理者收集费用
+        // Attempt to collect fees using the new fee manager
         vm.expectRevert("not a fee manager");
         newFeeManager.collectFeeTokenset(assetID);
 
         vm.stopPrank();
     }
 
-    // 测试错误情况：在重新平衡时收集费用
+    // Test error case: collecting fees during rebalancing
     function test_CollectFeeTokenset_Rebalancing() public {
         address assetTokenAddress = createAssetToken();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 模拟重新平衡状态
+        // Simulate rebalancing state
         vm.startPrank(address(rebalancer));
         assetToken.lockRebalance();
         vm.stopPrank();
 
         vm.startPrank(owner);
 
-        // 尝试在重新平衡时收集费用
+        // Attempt to collect fees during rebalancing
         vm.expectRevert("is rebalancing");
         feeManager.collectFeeTokenset(assetID);
 
         vm.stopPrank();
     }
 
-    // 测试错误情况：在发行时收集费用
+    // Test error case: collecting fees during issuance
     function test_CollectFeeTokenset_Issuing() public {
         address assetTokenAddress = createAssetToken();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 模拟发行状态
+        // Simulate issuance state
         vm.startPrank(address(issuer));
         assetToken.lockIssue();
         vm.stopPrank();
 
         vm.startPrank(owner);
 
-        // 尝试在发行时收集费用
+        // Attempt to collect fees during issuance
         vm.expectRevert("is issuing");
         feeManager.collectFeeTokenset(assetID);
 
         vm.stopPrank();
     }
 
-    // 测试错误情况：添加燃烧费用请求时已经在燃烧费用
+    // Test error case: adding a burn fee request while already burning fees
     function test_AddBurnFeeRequest_AlreadyBurning() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 添加第一个请求
+        // Add the first request
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         vm.startPrank(owner);
 
         feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // 尝试添加第二个请求
+        // Attempt to add a second request
         vm.expectRevert("is burning fee");
         feeManager.addBurnFeeRequest(assetID, orderInfo);
 
         vm.stopPrank();
     }
 
-    // 测试错误情况：拒绝不存在的请求
+    // Test error case: rejecting a non-existent request
     function test_RejectBurnFeeRequest_NonExistent() public {
         vm.startPrank(owner);
 
-        // 尝试拒绝不存在的请求
+        // Attempt to reject a non-existent request
         vm.expectRevert("nonce too large");
         feeManager.rejectBurnFeeRequest(0);
 
         vm.stopPrank();
     }
 
-    // 测试错误情况：确认不存在的请求
+    // Test error case: confirming a non-existent request
     function test_ConfirmBurnFeeRequest_NonExistent() public {
-        // 创建订单信息
+        // Create order info
         address assetTokenAddress = mintAndCollectFee();
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "txHash";
 
-        // 尝试确认不存在的请求
+        // Attempt to confirm a non-existent request
         vm.startPrank(owner);
 
         vm.expectRevert("nonce too large");
@@ -600,93 +600,93 @@ contract AssetFeeManagerTest is Test {
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息
+        // Create order info
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
-        // 修改订单哈希使其无效
+        // Modify order hash to make it invalid
         orderInfo.orderHash = bytes32(uint256(orderInfo.orderHash) + 1);
 
-        // 尝试添加燃烧费用请求
+        // Attempt to add burn fee request
         vm.startPrank(owner);
         vm.expectRevert("order not valid");
         feeManager.addBurnFeeRequest(assetID, orderInfo);
         vm.stopPrank();
     }
 
-    // 测试添加燃烧费用请求 - 费用代币不足
+    // Test adding a burn fee request - not enough fee tokens
     function test_AddBurnFeeRequest_NotEnoughFee() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息
+        // Create order info
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
-        // 修改输入代币数量使其超过可用费用
-        orderInfo.order.inAmount = 1000000 * 10 ** 8; // 设置一个非常大的值
+        // Modify input token amount to exceed available fees
+        orderInfo.order.inAmount = 1000000 * 10 ** 8; // Set a very large value
 
-        // 重新计算订单哈希
+        // Recalculate order hash
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
 
-        // 尝试添加燃烧费用请求
+        // Attempt to add burn fee request
         vm.startPrank(owner);
         vm.expectRevert("order not valid");
         feeManager.addBurnFeeRequest(assetID, orderInfo);
         vm.stopPrank();
     }
 
-    // 测试添加燃烧费用请求 - 接收者不匹配
+    // Test adding a burn fee request - receiver does not match
     function test_AddBurnFeeRequest_ReceiverNotMatch() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息
+        // Create order info
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
-        // 修改接收者地址
+        // Modify receiver address
         orderInfo.order.outAddressList[0] = vm.toString(nonOwner);
 
-        // 重新计算订单哈希
+        // Recalculate order hash
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
 
-        // 尝试添加燃烧费用请求
+        // Attempt to add burn fee request
         vm.startPrank(owner);
         vm.expectRevert("order not valid");
         feeManager.addBurnFeeRequest(assetID, orderInfo);
         vm.stopPrank();
     }
 
-    // 测试添加燃烧费用请求 - 链不匹配
+    // Test adding a burn fee request - chain does not match
     function test_AddBurnFeeRequest_ChainNotMatch() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息
+        // Create order info
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
-        // 修改链
+        // Modify chain
         orderInfo.order.outTokenset[0].chain = "ETH";
 
-        // 重新计算订单哈希
+        // Recalculate order hash
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
 
-        // 尝试添加燃烧费用请求
+        // Attempt to add burn fee request
         vm.startPrank(owner);
         vm.expectRevert("order not valid");
         feeManager.addBurnFeeRequest(assetID, orderInfo);
         vm.stopPrank();
     }
 
-    // 测试拒绝燃烧费用请求 - 请求状态不是PENDING
+    // Test rejecting a burn fee request - request status is not PENDING
     function test_RejectBurnFeeRequest_NotPending() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息并添加请求
+        // Create order info and add request
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         vm.startPrank(owner);
         uint256 nonce = feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // PMM拒绝交换请求
+        // PMM rejects swap request
         vm.stopPrank();
         vm.startPrank(pmm);
         swap.makerRejectSwapRequest(orderInfo);
@@ -694,83 +694,83 @@ contract AssetFeeManagerTest is Test {
 
         vm.startPrank(owner);
 
-        // 拒绝燃烧费用请求
+        // Reject burn fee request
         feeManager.rejectBurnFeeRequest(nonce);
 
-        // 尝试再次拒绝
+        // Attempt to reject again
         vm.expectRevert();
         feeManager.rejectBurnFeeRequest(nonce);
 
         vm.stopPrank();
     }
 
-    // 测试拒绝燃烧费用请求 - 交换请求状态不正确
+    // Test rejecting a burn fee request - swap request status is not valid
     function test_RejectBurnFeeRequest_SwapStatusNotValid() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息并添加请求
+        // Create order info and add request
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         vm.startPrank(owner);
         uint256 nonce = feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // PMM确认交换请求（而不是拒绝）
+        // PMM confirms swap request (instead of rejecting)
         vm.stopPrank();
         pmmConfirmSwapRequest(orderInfo, true);
 
         vm.startPrank(owner);
 
-        // 尝试拒绝燃烧费用请求
+        // Attempt to reject burn fee request
         vm.expectRevert();
         feeManager.rejectBurnFeeRequest(nonce);
 
         vm.stopPrank();
     }
 
-    // 测试确认燃烧费用请求 - 请求状态不是PENDING
+    // Test confirming a burn fee request - request status is not PENDING
     function test_ConfirmBurnFeeRequest_NotPending() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息并添加请求
+        // Create order info and add request
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         vm.startPrank(owner);
         uint256 nonce = feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // PMM确认交换请求
+        // PMM confirms swap request
         vm.stopPrank();
         pmmConfirmSwapRequest(orderInfo, true);
 
         vm.startPrank(owner);
 
-        // 确认燃烧费用请求
+        // Confirm burn fee request
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "txHash";
         feeManager.confirmBurnFeeRequest(nonce, orderInfo, inTxHashs);
 
-        // 尝试再次确认
+        // Attempt to confirm again
         vm.expectRevert();
         feeManager.confirmBurnFeeRequest(nonce, orderInfo, inTxHashs);
 
         vm.stopPrank();
     }
 
-    // 测试确认燃烧费用请求 - 交换请求状态不是MAKER_CONFIRMED
+    // Test confirming a burn fee request - swap request status is not MAKER_CONFIRMED
     function test_ConfirmBurnFeeRequest_SwapStatusNotValid() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息并添加请求
+        // Create order info and add request
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         vm.startPrank(owner);
         uint256 nonce = feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // 不让PMM确认交换请求
+        // Do not let PMM confirm swap request
 
-        // 尝试确认燃烧费用请求
+        // Attempt to confirm burn fee request
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "txHash";
         vm.expectRevert();
@@ -779,28 +779,28 @@ contract AssetFeeManagerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试确认燃烧费用请求 - 订单哈希不匹配
+    // Test confirming a burn fee request - order hash does not match
     function test_ConfirmBurnFeeRequest_OrderHashNotMatch() public {
         address assetTokenAddress = mintAndCollectFee();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
 
-        // 创建订单信息并添加请求
+        // Create order info and add request
         OrderInfo memory orderInfo = createOrderInfo(assetTokenAddress);
         vm.startPrank(owner);
         uint256 nonce = feeManager.addBurnFeeRequest(assetID, orderInfo);
 
-        // PMM确认交换请求
+        // PMM confirms swap request
         vm.stopPrank();
         pmmConfirmSwapRequest(orderInfo, true);
 
         vm.startPrank(owner);
 
-        // 修改订单信息
+        // Modify order info
         OrderInfo memory wrongOrderInfo = orderInfo;
         wrongOrderInfo.orderHash = bytes32(uint256(orderInfo.orderHash) + 1);
 
-        // 尝试确认燃烧费用请求
+        // Attempt to confirm burn fee request
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "txHash";
         vm.expectRevert();

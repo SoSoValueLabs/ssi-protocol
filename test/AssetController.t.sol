@@ -34,16 +34,16 @@ contract AssetControllerTest is Test {
     bytes32 constant DEFAULT_ADMIN_ROLE = 0x00;
 
     function setUp() public {
-        // 部署代币
+        // Deploy tokens
         WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
         WETH = new MockToken("Wrapped ETH", "WETH", 18);
 
         vm.startPrank(owner);
 
-        // 部署AssetToken实现合约
+        // Deploy AssetToken implementation contract
         tokenImpl = new AssetToken();
 
-        // 部署AssetFactory合约
+        // Deploy AssetFactory contract
         address factoryAddress = address(
             new ERC1967Proxy(
                 address(new AssetFactory()),
@@ -59,15 +59,15 @@ contract AssetControllerTest is Test {
             )
         );
 
-        // 部署Swap合约
+        // Deploy Swap contract
         swap = Swap(address(new ERC1967Proxy(address(new Swap()), abi.encodeCall(Swap.initialize, (owner, chain)))));
 
-        // 设置角色
+        // Set roles
         swap.grantRole(swap.MAKER_ROLE(), maker);
         swap.grantRole(swap.TAKER_ROLE(), taker);
         swap.grantRole(swap.TAKER_ROLE(), address(issuer));
 
-        // 设置白名单地址
+        // Set whitelist addresses
         string[] memory outWhiteAddresses = new string[](2);
 
         outWhiteAddresses[0] = vm.toString(address(issuer));
@@ -75,7 +75,7 @@ contract AssetControllerTest is Test {
 
         swap.setTakerAddresses(outWhiteAddresses, outWhiteAddresses);
 
-        // 添加代币白名单
+        // Add tokens to whitelist
         Token[] memory whiteListTokens = new Token[](2);
         whiteListTokens[0] = Token({
             chain: chain,
@@ -93,7 +93,7 @@ contract AssetControllerTest is Test {
         });
         swap.addWhiteListTokens(whiteListTokens);
 
-        // 部署AssetController合约
+        // Deploy AssetController contract
         controller = AssetController(
             address(
                 new ERC1967Proxy(
@@ -106,9 +106,9 @@ contract AssetControllerTest is Test {
         vm.stopPrank();
     }
 
-    // 创建订单信息
+    // Create order information
     function createOrderInfo() public returns (OrderInfo memory) {
-        // 创建输入代币集合
+        // Create input token set
         Token[] memory inTokenset = new Token[](1);
         inTokenset[0] = Token({
             chain: chain,
@@ -118,7 +118,7 @@ contract AssetControllerTest is Test {
             amount: 1 * 10 ** WBTC.decimals() // 1 BTC
         });
 
-        // 创建输出代币集合
+        // Create output token set
         Token[] memory outTokenset = new Token[](1);
         outTokenset[0] = Token({
             chain: chain,
@@ -130,7 +130,7 @@ contract AssetControllerTest is Test {
         deal(address(WETH), taker, 10000 * 10 ** WETH.decimals());
         deal(address(WBTC), taker, 10000 * 10 ** WETH.decimals());
 
-        // 创建订单
+        // Create order
         vm.startPrank(maker);
         Order memory order = Order({
             chain: chain,
@@ -141,63 +141,63 @@ contract AssetControllerTest is Test {
             inAddressList: new string[](1),
             outAddressList: new string[](1),
             inAmount: 10 * 10 ** WETH.decimals(), // 1 BTC
-            outAmount: 10 * 10 ** WETH.decimals(), // 按比例
-            deadline: block.timestamp + 3600, // 1小时后过期
+            outAmount: 10 * 10 ** WETH.decimals(), // Proportionally
+            deadline: block.timestamp + 3600, // Expires in 1 hour
             requester: taker
         });
 
         order.inAddressList[0] = vm.toString(maker);
         order.outAddressList[0] = vm.toString(vault);
 
-        // 计算订单哈希
+        // Calculate order hash
         bytes32 orderHash = keccak256(abi.encode(order));
 
-        // 签名
+        // Sign
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x3, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
         vm.stopPrank();
 
-        // 创建订单信息
+        // Create order information
         OrderInfo memory orderInfo = OrderInfo({order: order, orderHash: orderHash, orderSign: orderSign});
 
         return orderInfo;
     }
 
-    // 测试初始化
+    // Test initialization
     function test_Initialize() public {
         assertEq(controller.factoryAddress(), address(factory));
         assertEq(controller.owner(), owner);
         assertFalse(controller.paused());
     }
 
-    // 测试暂停和恢复
+    // Test pause and unpause
     function test_PauseAndUnpause() public {
         vm.startPrank(owner);
 
-        // 暂停
+        // Pause
         controller.pause();
         assertTrue(controller.paused());
 
-        // 恢复
+        // Unpause
         controller.unpause();
         assertFalse(controller.paused());
 
         vm.stopPrank();
     }
 
-    // 测试非所有者暂停
+    // Test non-owner pause
     function test_Pause_NotOwner() public {
         vm.startPrank(nonOwner);
 
-        // 非所有者尝试暂停
+        // Non-owner attempts to pause
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         controller.pause();
 
         vm.stopPrank();
     }
 
-    // 测试非所有者恢复
+    // Test non-owner unpause
     function test_Unpause_NotOwner() public {
         vm.startPrank(owner);
         controller.pause();
@@ -205,7 +205,7 @@ contract AssetControllerTest is Test {
 
         vm.startPrank(nonOwner);
 
-        // 非所有者尝试恢复
+        // Non-owner attempts to unpause
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         controller.unpause();
 
@@ -217,10 +217,10 @@ contract AssetControllerTest is Test {
     }
 
     function test_Constructor() public {
-        // 部署一个新的实现合约
+        // Deploy a new implementation contract
         AssetController newController = new AssetController();
 
-        // 尝试直接调用initialize，应该会失败
+        // Attempt to call initialize directly, which should fail
         vm.expectRevert(abi.encodeWithSelector(InvalidInitialization.selector));
         newController.initialize(owner, address(factory));
     }
@@ -228,62 +228,62 @@ contract AssetControllerTest is Test {
     function test_Owner() public {
         assertEq(controller.owner(), owner);
 
-        // 测试转移所有权
+        // Test ownership transfer
         vm.startPrank(owner);
         controller.transferOwnership(nonOwner);
         vm.stopPrank();
 
         assertEq(controller.owner(), nonOwner);
 
-        // 恢复所有权
+        // Restore ownership
         vm.startPrank(nonOwner);
         controller.transferOwnership(owner);
         vm.stopPrank();
     }
 
-    // 测试回滚交换请求
+    // Test rollback swap request
     function test_RollbackSwapRequest() public {
         OrderInfo memory orderInfo = createOrderInfo();
         address assetTokenAddress = createAssetToken();
         apAddMintRequest(assetTokenAddress, orderInfo);
 
-        // maker确认
+        // Maker confirms
         vm.startPrank(maker);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash_123";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 通过controller回滚
+        // Rollback via controller
         vm.startPrank(owner);
         issuer.rollbackSwapRequest(address(swap), orderInfo);
         vm.stopPrank();
 
-        // 验证状态
+        // Verify status
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.PENDING));
     }
 
-    // 测试回滚交换请求 - 零地址
+    // Test rollback swap request - zero address
     function test_RollbackSwapRequest_ZeroAddress() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
         vm.startPrank(owner);
 
-        // 尝试用零地址回滚
+        // Attempt to rollback with zero address
         vm.expectRevert("zero swap address");
         controller.rollbackSwapRequest(address(0), orderInfo);
 
         vm.stopPrank();
     }
 
-    // 测试回滚交换请求 - 非所有者
+    // Test rollback swap request - not owner
     function test_RollbackSwapRequest_NotOwner() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
         vm.startPrank(nonOwner);
 
-        // 非所有者尝试回滚
+        // Non-owner attempts to rollback
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         controller.rollbackSwapRequest(address(swap), orderInfo);
 
@@ -332,7 +332,7 @@ contract AssetControllerTest is Test {
         return (nonce, amountBeforeMint);
     }
 
-    // 测试取消交换请求
+    // Test cancel swap request
     function test_CancelSwapRequest() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
@@ -340,79 +340,79 @@ contract AssetControllerTest is Test {
         IERC20 inToken = IERC20(vm.parseAddress(orderInfo.order.inTokenset[0].addr));
         (uint256 nonce, uint256 amountBeforeMint) = apAddMintRequest(assetTokenAddress, orderInfo);
 
-        // 通过controller取消
+        // Cancel via controller
         vm.startPrank(owner);
-        vm.warp(block.timestamp + 3601); // 超过MAX_MARKER_CONFIRM_DELAY
+        vm.warp(block.timestamp + 3601); // Exceed MAX_MARKER_CONFIRM_DELAY
         issuer.cancelSwapRequest(address(swap), orderInfo);
         vm.stopPrank();
 
-        // 验证状态
+        // Verify status
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.CANCEL));
     }
 
-    // 测试取消交换请求 - 零地址
+    // Test cancel swap request - zero address
     function test_CancelSwapRequest_ZeroAddress() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
         vm.startPrank(owner);
 
-        // 尝试用零地址取消
+        // Attempt to cancel with zero address
         vm.expectRevert("zero swap address");
         controller.cancelSwapRequest(address(0), orderInfo);
 
         vm.stopPrank();
     }
 
-    // 测试取消交换请求 - 非所有者
+    // Test cancel swap request - not owner
     function test_CancelSwapRequest_NotOwner() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
         vm.startPrank(nonOwner);
 
-        // 非所有者尝试取消
+        // Non-owner attempts to cancel
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         controller.cancelSwapRequest(address(swap), orderInfo);
 
         vm.stopPrank();
     }
 
-    // 测试升级合约
+    // Test contract upgrade
     function test_Upgrade() public {
         vm.startPrank(owner);
 
-        // 部署新的实现合约
+        // Deploy new implementation contract
         AssetController newImplementation = new AssetController();
 
-        // 升级
+        // Upgrade
         UUPSUpgradeable(address(controller)).upgradeToAndCall(address(newImplementation), "");
 
         vm.stopPrank();
 
-        // 验证升级后的合约仍然可以正常工作
+        // Verify that the upgraded contract still works properly
         assertEq(controller.factoryAddress(), address(factory));
         assertEq(controller.owner(), owner);
     }
 
-    // 测试升级合约 - 非所有者
+    // Test contract upgrade - not owner
     function test_Upgrade_NotOwner() public {
         vm.startPrank(nonOwner);
 
-        // 部署新的实现合约
+        // Deploy new implementation contract
         AssetController newImplementation = new AssetController();
 
-        // 非所有者尝试升级
+        // Non-owner attempts to upgrade
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         UUPSUpgradeable(address(controller)).upgradeToAndCall(address(newImplementation), "");
 
         vm.stopPrank();
     }
 
-    // 测试内部函数checkRequestOrderInfo
+    // Test internal function checkRequestOrderInfo
     function test_CheckRequestOrderInfo() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 创建请求
+        // Create request
         Request memory request = Request({
             nonce: 1,
             requester: taker,
@@ -425,15 +425,15 @@ contract AssetControllerTest is Test {
             issueFee: 0
         });
 
-        // 调用内部函数
-        // 注意：由于checkRequestOrderInfo是internal函数，我们需要通过一个公共函数来测试它
-        // 这里我们使用一个模拟合约来测试
+        // Call internal function
+        // Note: Since checkRequestOrderInfo is an internal function, we need to test it via a public function
+        // Here we use a mock contract for testing
         AssetControllerMock mock = new AssetControllerMock();
 
-        // 测试正常情况
+        // Test normal case
         mock.checkRequestOrderInfoPublic(request, orderInfo);
 
-        // 测试orderHash不匹配
+        // Test orderHash mismatch
         bytes32 wrongOrderHash = bytes32(uint256(orderInfo.orderHash) + 1);
         Request memory wrongRequest = request;
         wrongRequest.orderHash = wrongOrderHash;
@@ -441,16 +441,16 @@ contract AssetControllerTest is Test {
         vm.expectRevert("order hash not match");
         mock.checkRequestOrderInfoPublic(wrongRequest, orderInfo);
 
-        // 测试orderHash计算错误
+        // Test orderHash calculation error
         OrderInfo memory wrongOrderInfo = orderInfo;
-        wrongOrderInfo.order.nonce = 2; // 修改订单，使哈希不匹配
+        wrongOrderInfo.order.nonce = 2; // Modify the order to make the hash mismatch
 
         vm.expectRevert("order hash not match");
         mock.checkRequestOrderInfoPublic(request, wrongOrderInfo);
     }
 }
 
-// 用于测试internal函数的模拟合约
+// Mock contract for testing internal functions
 contract AssetControllerMock {
     function checkRequestOrderInfoPublic(Request memory request, OrderInfo memory orderInfo) public pure {
         require(request.orderHash == orderInfo.orderHash, "order hash not match");

@@ -38,7 +38,7 @@ contract AssetIssuerTest is Test {
     string chain = "SETH";
 
     function setUp() public {
-        // 部署代币
+        // Deploy tokens
         WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
         WETH = new MockToken("Wrapped ETH", "WETH", 18);
         USDT = new MockToken("Tether USD", "USDT", 6);
@@ -46,11 +46,11 @@ contract AssetIssuerTest is Test {
         vm.startPrank(owner);
         swap = Swap(address(new ERC1967Proxy(address(new Swap()), abi.encodeCall(Swap.initialize, (owner, chain)))));
 
-        // 部署AssetToken实现合约
+        // Deploy AssetToken implementation contract
         tokenImpl = new AssetToken();
         factoryImpl = new AssetFactory();
 
-        // 部署Factory合约
+        // Deploy Factory contract
         address factoryAddress = address(
             new ERC1967Proxy(
                 address(factoryImpl), abi.encodeCall(AssetFactory.initialize, (owner, vault, chain, address(tokenImpl)))
@@ -58,7 +58,7 @@ contract AssetIssuerTest is Test {
         );
 
         factory = AssetFactory(factoryAddress);
-        // 部署Issuer合约
+        // Deploy Issuer contract
         issuer = AssetIssuer(
             address(
                 new ERC1967Proxy(
@@ -66,7 +66,7 @@ contract AssetIssuerTest is Test {
                 )
             )
         );
-        // 部署AssetRebalancer代理合约
+        // Deploy AssetRebalancer proxy contract
         rebalancer = AssetRebalancer(
             address(
                 new ERC1967Proxy(
@@ -76,7 +76,7 @@ contract AssetIssuerTest is Test {
             )
         );
 
-        // 部署AssetFeeManager代理合约
+        // Deploy AssetFeeManager proxy contract
         feeManager = AssetFeeManager(
             address(
                 new ERC1967Proxy(
@@ -86,14 +86,14 @@ contract AssetIssuerTest is Test {
             )
         );
 
-        // 设置角色
+        // Set roles
         swap.grantRole(swap.MAKER_ROLE(), pmm);
         swap.grantRole(swap.TAKER_ROLE(), ap);
         swap.grantRole(swap.TAKER_ROLE(), address(issuer));
         swap.grantRole(swap.TAKER_ROLE(), address(rebalancer));
         swap.grantRole(swap.TAKER_ROLE(), address(feeManager));
 
-        // 设置白名单地址
+        // Set whitelist addresses
         string[] memory outWhiteAddresses = new string[](3);
         outWhiteAddresses[0] = vm.toString(address(issuer));
         outWhiteAddresses[1] = vm.toString(vault);
@@ -108,7 +108,7 @@ contract AssetIssuerTest is Test {
         swap.setTakerAddresses(outWhiteAddresses, senders);
         vm.stopPrank();
 
-        // 添加代币白名单
+        // Add token whitelist
         assetTokenAddress = createAssetToken();
         vm.startPrank(owner);
         Token[] memory whiteListTokens = new Token[](4);
@@ -161,11 +161,11 @@ contract AssetIssuerTest is Test {
         return asset;
     }
 
-    // 创建资产代币
+    // Create asset token
     function createAssetToken() internal returns (address) {
         vm.startPrank(owner);
 
-        // 创建资产代币
+        // Create asset token
         Token[] memory tokenset = new Token[](1);
         tokenset[0] = Token({
             chain: chain,
@@ -181,12 +181,12 @@ contract AssetIssuerTest is Test {
             asset, 10000, address(issuer), address(rebalancer), address(feeManager), address(swap)
         );
 
-        // 设置发行参数
+        // Set issuance parameters
         uint256 assetID = AssetToken(assetTokenAddress).id();
         issuer.setIssueFee(assetID, 10000); // 0.0001 (10000/10^8)
         issuer.setIssueAmountRange(assetID, Range({min: 1 * 10 ** WETH.decimals(), max: 10000 * 10 ** WETH.decimals()}));
 
-        // 添加参与者
+        // Add participants
         issuer.addParticipant(assetID, ap);
 
         vm.stopPrank();
@@ -194,9 +194,9 @@ contract AssetIssuerTest is Test {
         return assetTokenAddress;
     }
 
-    // 创建订单信息
+    // Create order information
     function createMintOrderInfo() internal returns (OrderInfo memory) {
-        // 创建输入代币集合
+        // Create input token set
         Token[] memory inTokenset = new Token[](1);
         inTokenset[0] = Token({
             chain: chain,
@@ -206,7 +206,7 @@ contract AssetIssuerTest is Test {
             amount: 10 ** 18 // 1 ETH
         });
 
-        // 创建输出代币集合
+        // Create output token set
         Token[] memory outTokenset = new Token[](1);
         outTokenset[0] = Token({
             chain: chain,
@@ -216,7 +216,7 @@ contract AssetIssuerTest is Test {
             amount: 10 ** 18 // 1 ETH
         });
 
-        // 创建订单
+        // Create order
         Order memory order = Order({
             chain: chain,
             maker: pmm,
@@ -225,32 +225,32 @@ contract AssetIssuerTest is Test {
             outTokenset: outTokenset,
             inAddressList: new string[](1),
             outAddressList: new string[](1),
-            inAmount: 10 ** 18, // 按比例
-            outAmount: 10 ** 18, // 按比例
-            deadline: block.timestamp + 3600, // 1小时后过期
+            inAmount: 10 ** 18, // Proportionally
+            outAmount: 10 ** 18, // Proportionally
+            deadline: block.timestamp + 3600, // Expires in 1 hour
             requester: ap
         });
 
         order.inAddressList[0] = vm.toString(pmm);
         order.outAddressList[0] = vm.toString(ap);
 
-        // 计算订单哈希
+        // Calculate order hash
         bytes32 orderHash = keccak256(abi.encode(order));
 
-        // 签名
+        // Sign
         vm.startPrank(pmm);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x3, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
         vm.stopPrank();
 
-        // 创建订单信息
+        // Create order information
         OrderInfo memory orderInfo = OrderInfo({order: order, orderHash: orderHash, orderSign: orderSign});
 
         return orderInfo;
     }
 
     function createRedeemOrderInfo(address assetTokenAddress) internal returns (OrderInfo memory) {
-        // 创建输入代币集合（资产代币）
+        // Create input token set (asset token)
         Token[] memory inTokenset = new Token[](1);
         inTokenset[0] = Token({
             chain: chain,
@@ -260,7 +260,7 @@ contract AssetIssuerTest is Test {
             amount: 1000000000000000000
         });
 
-        // 创建输出代币集合（WETH）
+        // Create output token set (WETH)
         Token[] memory outTokenset = new Token[](1);
         outTokenset[0] = Token({
             chain: chain,
@@ -270,7 +270,7 @@ contract AssetIssuerTest is Test {
             amount: 10 ** 18 // 1 ETH
         });
 
-        // 创建订单
+        // Create order
         Order memory order = Order({
             chain: chain,
             maker: pmm,
@@ -279,31 +279,31 @@ contract AssetIssuerTest is Test {
             outTokenset: outTokenset,
             inAddressList: new string[](1),
             outAddressList: new string[](1),
-            inAmount: 10 ** 18, // 1单位资产代币
+            inAmount: 10 ** 18, // 1 unit of asset token
             outAmount: 10 ** 18, // 1 ETH
-            deadline: block.timestamp + 3600, // 1小时后过期
+            deadline: block.timestamp + 3600, // Expires in 1 hour
             requester: ap
         });
 
         order.inAddressList[0] = vm.toString(ap);
         order.outAddressList[0] = vm.toString(0x5CF7F96627F3C9903763d128A1cc5D97556A6b99);
 
-        // 计算订单哈希
+        // Calculate order hash
         bytes32 orderHash = keccak256(abi.encode(order));
 
-        // 签名
+        // Sign
         vm.startPrank(pmm);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x3, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
         vm.stopPrank();
 
-        // 创建订单信息
+        // Create order information
         OrderInfo memory orderInfo = OrderInfo({order: order, orderHash: orderHash, orderSign: orderSign});
 
         return orderInfo;
     }
 
-    // 测试获取发行金额范围
+    // Test getting issuance amount range
     function test_GetIssueAmountRange() public {
         // address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
@@ -313,24 +313,24 @@ contract AssetIssuerTest is Test {
         assertEq(range.max, 10000 * 10 ** 18);
     }
 
-    // 测试设置无效的发行金额范围
+    // Test setting invalid issuance amount range
     function test_SetIssueAmountRange_InvalidRange() public {
         // address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
         vm.startPrank(owner);
 
-        // 最小值大于最大值
+        // Minimum value greater than maximum value
         Range memory invalidRange1 = Range({min: 100, max: 50});
         vm.expectRevert("wrong range");
         issuer.setIssueAmountRange(assetID, invalidRange1);
 
-        // 最大值为0
+        // Maximum value is 0
         Range memory invalidRange2 = Range({min: 100, max: 0});
         vm.expectRevert("wrong range");
         issuer.setIssueAmountRange(assetID, invalidRange2);
 
-        // 最小值为0
+        // Minimum value is 0
         Range memory invalidRange3 = Range({min: 0, max: 100});
         vm.expectRevert("wrong range");
         issuer.setIssueAmountRange(assetID, invalidRange3);
@@ -338,7 +338,7 @@ contract AssetIssuerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试获取发行费用
+    // Test getting issuance fee
     function test_GetIssueFee() public {
         // address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
@@ -347,14 +347,14 @@ contract AssetIssuerTest is Test {
         assertEq(fee, 10000);
     }
 
-    // 测试设置无效的发行费用
+    // Test setting invalid issuance fee
     function test_SetIssueFee_InvalidFee() public {
         // address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
         vm.startPrank(owner);
 
-        // 费用大于等于1
+        // Fee greater than or equal to 1
         uint256 invalidFee = 10 ** issuer.feeDecimals();
         vm.expectRevert("issueFee should less than 1");
         issuer.setIssueFee(assetID, invalidFee);
@@ -362,7 +362,7 @@ contract AssetIssuerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试添加参与者
+    // Test adding participants
     function test_AddParticipant() public {
         // address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
@@ -372,10 +372,10 @@ contract AssetIssuerTest is Test {
         vm.stopPrank();
 
         assertTrue(issuer.isParticipant(assetID, nonOwner));
-        assertEq(issuer.getParticipantLength(assetID), 2); // ap和nonOwner
+        assertEq(issuer.getParticipantLength(assetID), 2); // ap and nonOwner
     }
 
-    // 测试移除参与者
+    // Test removing participants
     function test_RemoveParticipant() public {
         // address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
@@ -388,7 +388,7 @@ contract AssetIssuerTest is Test {
         assertEq(issuer.getParticipantLength(assetID), 0);
     }
 
-    // 测试获取参与者
+    // Test getting participants
     function test_GetParticipants() public {
         // address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
@@ -400,7 +400,7 @@ contract AssetIssuerTest is Test {
         address[] memory participants = issuer.getParticipants(assetID);
         assertEq(participants.length, 2);
 
-        // 验证参与者列表包含ap和nonOwner
+        // Verify that the participant list contains ap and nonOwner
         bool foundAp = false;
         bool foundNonOwner = false;
 
@@ -417,21 +417,21 @@ contract AssetIssuerTest is Test {
         assertTrue(foundNonOwner);
     }
 
-    // 测试获取参与者长度
+    // Test getting participant length
     function test_GetParticipantLength() public {
         // address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        assertEq(issuer.getParticipantLength(assetID), 1); // 只有ap
+        assertEq(issuer.getParticipantLength(assetID), 1); // Only ap
 
         vm.startPrank(owner);
         issuer.addParticipant(assetID, nonOwner);
         vm.stopPrank();
 
-        assertEq(issuer.getParticipantLength(assetID), 2); // ap和nonOwner
+        assertEq(issuer.getParticipantLength(assetID), 2); // ap and nonOwner
     }
 
-    // 测试获取参与者
+    // Test getting participant
     function test_GetParticipant() public {
         // address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
@@ -443,27 +443,27 @@ contract AssetIssuerTest is Test {
         issuer.addParticipant(assetID, nonOwner);
         vm.stopPrank();
 
-        // 获取第二个参与者
+        // Get the second participant
         address participant2 = issuer.getParticipant(assetID, 1);
         assertEq(participant2, nonOwner);
     }
 
-    // 测试获取参与者索引超出范围
+    // Test getting participant with out-of-range index
     function test_GetParticipant_OutOfRange() public {
         // address assetTokenAddress = createAssetToken();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
         vm.expectRevert("out of range");
-        issuer.getParticipant(assetID, 1); // 只有一个参与者，索引1超出范围
+        issuer.getParticipant(assetID, 1); // Only one participant, index 1 is out of range
     }
 
-    // 测试添加铸造请求
+    // Test adding mint request
     function test_AddMintRequest() public {
         // address assetTokenAddress = createAssetToken();
         OrderInfo memory orderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** WETH.decimals());
         vm.stopPrank();
@@ -483,7 +483,7 @@ contract AssetIssuerTest is Test {
         assertEq(request.issueFee, 10000);
     }
 
-    // 测试获取铸造请求长度
+    // Test getting mint request length
     function test_GetMintRequestLength() public {
         // address assetTokenAddress = createAssetToken();
         OrderInfo memory orderInfo = createMintOrderInfo();
@@ -491,7 +491,7 @@ contract AssetIssuerTest is Test {
 
         assertEq(issuer.getMintRequestLength(), 0);
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -504,13 +504,13 @@ contract AssetIssuerTest is Test {
         assertEq(issuer.getMintRequestLength(), 1);
     }
 
-    // 测试取消铸造请求
+    // Test canceling mint request
     function test_CancelMintRequest() public {
         // address assetTokenAddress = createAssetToken();
         OrderInfo memory orderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -519,7 +519,7 @@ contract AssetIssuerTest is Test {
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
 
-        // 等待一天后取消
+        // Wait one day to cancel
         vm.warp(block.timestamp + 1 days);
         issuer.cancelMintRequest(nonce, orderInfo, false);
         vm.stopPrank();
@@ -528,13 +528,13 @@ contract AssetIssuerTest is Test {
         assertEq(uint256(request.status), uint256(RequestStatus.CANCEL));
     }
 
-    // 测试强制取消铸造请求
+    // Test force-canceling mint request
     function test_ForceCancelMintRequest() public {
         // address assetTokenAddress = createAssetToken();
         OrderInfo memory orderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -543,7 +543,7 @@ contract AssetIssuerTest is Test {
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
 
-        // 等待一天后强制取消
+        // Wait one day to force-cancel
         vm.warp(block.timestamp + 1 days);
         issuer.cancelMintRequest(nonce, orderInfo, true);
         vm.stopPrank();
@@ -551,19 +551,19 @@ contract AssetIssuerTest is Test {
         Request memory request = issuer.getMintRequest(nonce);
         assertEq(uint256(request.status), uint256(RequestStatus.CANCEL));
 
-        // 验证可领取金额
+        // Verify claimable amount
         address tokenAddress = vm.parseAddress(orderInfo.order.inTokenset[0].addr);
         uint256 claimable = issuer.claimables(tokenAddress, ap);
         assertTrue(claimable > 0);
     }
 
-    // 测试拒绝铸造请求
+    // Test rejecting mint request
     function test_RejectMintRequest() public {
         // address assetTokenAddress = createAssetToken();
         OrderInfo memory orderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -573,12 +573,12 @@ contract AssetIssuerTest is Test {
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
         vm.stopPrank();
 
-        // maker拒绝请求
+        // Maker rejects the request
         vm.startPrank(pmm);
         swap.makerRejectSwapRequest(orderInfo);
         vm.stopPrank();
 
-        // 拒绝铸造请求
+        // Reject mint request
         vm.startPrank(owner);
         issuer.rejectMintRequest(nonce, orderInfo, false);
         vm.stopPrank();
@@ -587,13 +587,13 @@ contract AssetIssuerTest is Test {
         assertEq(uint256(request.status), uint256(RequestStatus.REJECTED));
     }
 
-    // 测试强制拒绝铸造请求
+    // Test force-rejecting mint request
     function test_ForceRejectMintRequest() public {
         // address assetTokenAddress = createAssetToken();
         OrderInfo memory orderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -603,12 +603,12 @@ contract AssetIssuerTest is Test {
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
         vm.stopPrank();
 
-        // maker拒绝请求
+        // Maker rejects the request
         vm.startPrank(pmm);
         swap.makerRejectSwapRequest(orderInfo);
         vm.stopPrank();
 
-        // 强制拒绝铸造请求
+        // Force-reject mint request
         vm.startPrank(owner);
         issuer.rejectMintRequest(nonce, orderInfo, true);
         vm.stopPrank();
@@ -616,19 +616,19 @@ contract AssetIssuerTest is Test {
         Request memory request = issuer.getMintRequest(nonce);
         assertEq(uint256(request.status), uint256(RequestStatus.REJECTED));
 
-        // 验证可领取金额
+        // Verify claimable amount
         address tokenAddress = vm.parseAddress(orderInfo.order.inTokenset[0].addr);
         uint256 claimable = issuer.claimables(tokenAddress, ap);
         assertTrue(claimable > 0);
     }
 
-    // 测试确认铸造请求
+    // Test confirming mint request
     function test_ConfirmMintRequest() public {
         // address assetTokenAddress = createAssetToken();
         OrderInfo memory orderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -638,14 +638,14 @@ contract AssetIssuerTest is Test {
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
@@ -655,18 +655,18 @@ contract AssetIssuerTest is Test {
         Request memory request = issuer.getMintRequest(nonce);
         assertEq(uint256(request.status), uint256(RequestStatus.CONFIRMED));
 
-        // 验证ap收到了资产代币
+        // Verify that ap received the asset token
         assertEq(IERC20(assetTokenAddress).balanceOf(ap), orderInfo.order.outAmount);
     }
 
-    // 测试添加赎回请求
+    // Test adding redeem request
     function test_AddRedeemRequest() public {
-        // 先铸造资产代币
+        // Mint asset token first
         // address assetTokenAddress = createAssetToken();
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -676,21 +676,21 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
@@ -708,16 +708,16 @@ contract AssetIssuerTest is Test {
         assertEq(request.issueFee, 10000);
     }
 
-    // 测试获取赎回请求长度
+    // Test getting redeem request length
     function test_GetRedeemRequestLength() public {
         assertEq(issuer.getRedeemRequestLength(), 0);
 
-        // 先铸造资产代币
+        // Mint asset token first
         // address assetTokenAddress = createAssetToken();
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -727,21 +727,21 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
@@ -752,14 +752,14 @@ contract AssetIssuerTest is Test {
         assertEq(issuer.getRedeemRequestLength(), 1);
     }
 
-    // 测试取消赎回请求
+    // Test canceling redeem request
     function test_CancelRedeemRequest() public {
-        // 先铸造资产代币
+        // Mint asset token first
         // address assetTokenAddress = createAssetToken();
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -769,21 +769,21 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
@@ -791,7 +791,7 @@ contract AssetIssuerTest is Test {
         uint256 nonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
         vm.stopPrank();
 
-        // 取消赎回请求
+        // Cancel redeem request
         vm.startPrank(ap);
         vm.warp(block.timestamp + 1 hours);
         issuer.cancelRedeemRequest(nonce, redeemOrderInfo);
@@ -802,11 +802,11 @@ contract AssetIssuerTest is Test {
     }
 
     function test_RejectRedeemRequest() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -816,21 +816,21 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
@@ -838,12 +838,12 @@ contract AssetIssuerTest is Test {
         uint256 nonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker拒绝请求
+        // Maker rejects the request
         vm.startPrank(pmm);
         swap.makerRejectSwapRequest(redeemOrderInfo);
         vm.stopPrank();
 
-        // 拒绝赎回请求
+        // Reject redeem request
         vm.startPrank(owner);
         issuer.rejectRedeemRequest(nonce);
         vm.stopPrank();
@@ -852,13 +852,13 @@ contract AssetIssuerTest is Test {
         assertEq(uint256(request.status), uint256(RequestStatus.REJECTED));
     }
 
-    // 测试确认赎回请求
+    // Test confirming redeem request
     function test_ConfirmRedeemRequest() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -869,21 +869,21 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
@@ -891,14 +891,14 @@ contract AssetIssuerTest is Test {
         uint256 nonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         WETH.approve(address(swap), 1e15 * 10 ** 18);
         bytes[] memory redeemOutTxHashs = new bytes[](1);
         redeemOutTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(redeemOrderInfo, redeemOutTxHashs);
         vm.stopPrank();
-        // 确认赎回请求
+        // Confirm redeem request
         vm.startPrank(owner);
         bytes[] memory redeemInTxHashs = new bytes[](1);
         redeemInTxHashs[0] = "tx_hash";
@@ -909,13 +909,13 @@ contract AssetIssuerTest is Test {
         assertEq(uint256(request.status), uint256(RequestStatus.CONFIRMED));
     }
 
-    // 测试强制确认赎回请求
+    // Test force-confirming redeem request
     function test_ForceConfirmRedeemRequest() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -925,7 +925,7 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         WETH.approve(address(swap), 1e15 * 10 ** 18);
         bytes[] memory outTxHashs = new bytes[](1);
@@ -933,7 +933,7 @@ contract AssetIssuerTest is Test {
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         WETH.approve(address(swap), 1e15 * 10 ** 18);
         bytes[] memory inTxHashs = new bytes[](1);
@@ -941,7 +941,7 @@ contract AssetIssuerTest is Test {
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
@@ -949,14 +949,14 @@ contract AssetIssuerTest is Test {
         uint256 nonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory redeemOutTxHashs = new bytes[](1);
         redeemOutTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(redeemOrderInfo, redeemOutTxHashs);
         vm.stopPrank();
 
-        // 强制确认赎回请求
+        // Force-confirm redeem request
         vm.startPrank(owner);
         bytes[] memory redeemInTxHashs = new bytes[](1);
         redeemInTxHashs[0] = "tx_hash";
@@ -966,19 +966,19 @@ contract AssetIssuerTest is Test {
         Request memory request = issuer.getRedeemRequest(nonce);
         assertEq(uint256(request.status), uint256(RequestStatus.CONFIRMED));
 
-        // 验证可领取金额
+        // Verify claimable amount
         address tokenAddress = vm.parseAddress(redeemOrderInfo.order.outTokenset[0].addr);
         uint256 claimable = issuer.claimables(tokenAddress, ap);
         assertTrue(claimable > 0);
     }
 
-    // 测试claim函数
+    // Test claim function
     function test_Claim() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -988,136 +988,136 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // 强制取消铸造请求，使ap有可领取的代币
+        // Force-cancel mint request to make ap have claimable tokens
         vm.startPrank(ap);
         vm.warp(block.timestamp + 1 days);
         issuer.cancelMintRequest(mintNonce, mintOrderInfo, true);
         vm.stopPrank();
 
-        // 记录取消前的余额
+        // Record balance before claiming
         address tokenAddress = vm.parseAddress(mintOrderInfo.order.inTokenset[0].addr);
         uint256 balanceBefore = IERC20(tokenAddress).balanceOf(ap);
         uint256 claimable = issuer.claimables(tokenAddress, ap);
 
-        // 领取代币
+        // Claim tokens
         vm.startPrank(ap);
         issuer.claim(tokenAddress);
         vm.stopPrank();
 
-        // 验证余额增加和可领取金额清零
+        // Verify increased balance and zero claimable amount
         uint256 balanceAfter = IERC20(tokenAddress).balanceOf(ap);
         assertEq(balanceAfter - balanceBefore, claimable);
         assertEq(issuer.claimables(tokenAddress, ap), 0);
     }
 
-    // 测试参与者相关函数
+    // Test participant-related functions
     function test_ParticipantFunctions() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 测试添加参与者
+        // Test adding participants
         vm.startPrank(owner);
         address newParticipant = vm.addr(0x9);
         issuer.addParticipant(assetID, newParticipant);
         vm.stopPrank();
 
-        // 验证参与者已添加
+        // Verify that the participant has been added
         assertTrue(issuer.isParticipant(assetID, newParticipant));
-        assertEq(issuer.getParticipantLength(assetID), 2); // ap和新参与者
+        assertEq(issuer.getParticipantLength(assetID), 2); // ap and new participant
         assertEq(issuer.getParticipant(assetID, 1), newParticipant);
 
-        // 测试获取所有参与者
+        // Test getting all participants
         address[] memory participants = issuer.getParticipants(assetID);
         assertEq(participants.length, 2);
         assertEq(participants[0], ap);
         assertEq(participants[1], newParticipant);
 
-        // 测试移除参与者
+        // Test removing participants
         vm.startPrank(owner);
         issuer.removeParticipant(assetID, newParticipant);
         vm.stopPrank();
 
-        // 验证参与者已移除
+        // Verify that the participant has been removed
         assertFalse(issuer.isParticipant(assetID, newParticipant));
         assertEq(issuer.getParticipantLength(assetID), 1);
     }
 
-    // 测试设置发行费用
+    // Test setting issuance fee
     function test_SetIssueFee() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 设置新的发行费用
+        // Set a new issuance fee
         vm.startPrank(owner);
         uint256 newFee = 5000; // 0.05%
         issuer.setIssueFee(assetID, newFee);
         vm.stopPrank();
 
-        // 验证费用已更新
+        // Verify that the fee has been updated
         assertEq(issuer.getIssueFee(assetID), newFee);
 
-        // 测试设置过高的费用（应该失败）
+        // Test setting an excessive fee (should fail)
         vm.startPrank(owner);
         vm.expectRevert("issueFee should less than 1");
         issuer.setIssueFee(assetID, 10 ** 8);
         vm.stopPrank();
     }
 
-    // 测试设置发行金额范围
+    // Test setting issuance amount range
     function test_SetIssueAmountRange() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 设置新的发行金额范围
+        // Set a new issuance amount range
         vm.startPrank(owner);
         Range memory newRange = Range({min: 500 * 10 ** 8, max: 20000 * 10 ** 8});
         issuer.setIssueAmountRange(assetID, newRange);
         vm.stopPrank();
 
-        // 验证范围已更新
+        // Verify that the range has been updated
         Range memory range = issuer.getIssueAmountRange(assetID);
         assertEq(range.min, newRange.min);
         assertEq(range.max, newRange.max);
 
-        // 测试设置无效范围（最小值大于最大值）
+        // Test setting an invalid range (minimum value greater than maximum value)
         vm.startPrank(owner);
         vm.expectRevert("wrong range");
         issuer.setIssueAmountRange(assetID, Range({min: 20000 * 10 ** 8, max: 500 * 10 ** 8}));
         vm.stopPrank();
 
-        // 测试设置无效范围（最小值为0）
+        // Test setting an invalid range (minimum value is 0)
         vm.startPrank(owner);
         vm.expectRevert("wrong range");
         issuer.setIssueAmountRange(assetID, Range({min: 0, max: 500 * 10 ** 8}));
         vm.stopPrank();
     }
 
-    // 测试getIssueAmountRange函数的错误情况
+    // Test error cases for getIssueAmountRange function
     function test_GetIssueAmountRangeError() public {
-        uint256 newAssetID = 999; // 不存在的资产ID
+        uint256 newAssetID = 999; // Non-existent asset ID
 
         vm.expectRevert("issue amount range not set");
         issuer.getIssueAmountRange(newAssetID);
     }
 
-    // 测试getIssueFee函数的错误情况
+    // Test error cases for getIssueFee function
     function test_GetIssueFeeError() public {
-        uint256 newAssetID = 999; // 不存在的资产ID
+        uint256 newAssetID = 999; // Non-existent asset ID
 
         vm.expectRevert("issue fee not set");
         issuer.getIssueFee(newAssetID);
     }
 
-    // 测试addMintRequest函数的各种错误情况
+    // Test various error cases for addMintRequest function
     function test_AddMintRequestErrors() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // 测试非参与者调用
+        // Test non-participant call
         address nonParticipant = vm.addr(0x10);
         vm.startPrank(nonParticipant);
         vm.expectRevert("msg sender not order requester");
         issuer.addMintRequest(assetID, orderInfo, 10000);
         vm.stopPrank();
 
-        // 测试请求者不是消息发送者
+        // Test request not made by the message sender
         Order memory invalidOrder = orderInfo.order;
         invalidOrder.requester = nonParticipant;
         OrderInfo memory invalidOrderInfo =
@@ -1128,7 +1128,7 @@ contract AssetIssuerTest is Test {
         issuer.addMintRequest(assetID, invalidOrderInfo, 10000);
         vm.stopPrank();
 
-        // 测试最大费用低于当前费用
+        // Test maximum fee lower than current fee
         vm.startPrank(owner);
         issuer.setIssueFee(assetID, 20000);
         vm.stopPrank();
@@ -1139,14 +1139,14 @@ contract AssetIssuerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试addRedeemRequest函数的各种错误情况
+    // Test various error cases for addRedeemRequest function
     function test_AddRedeemRequestErrors() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1156,24 +1156,24 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
-        // 测试非参与者调用
+        // Test non-participant call
         address nonParticipant = vm.addr(0x10);
         deal(address(WETH), ap, 100000 * 10 ** 18);
         vm.startPrank(nonParticipant);
@@ -1181,7 +1181,7 @@ contract AssetIssuerTest is Test {
         issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
         vm.stopPrank();
 
-        // 测试请求者不是消息发送者
+        // Test request not made by the message sender
         Order memory invalidOrder = redeemOrderInfo.order;
         invalidOrder.requester = nonParticipant;
         OrderInfo memory invalidOrderInfo =
@@ -1192,7 +1192,7 @@ contract AssetIssuerTest is Test {
         issuer.addRedeemRequest(assetID, invalidOrderInfo, 10000);
         vm.stopPrank();
 
-        // 测试最大费用低于当前费用
+        // Test maximum fee lower than current fee
         vm.startPrank(owner);
         issuer.setIssueFee(assetID, 20000);
         vm.stopPrank();
@@ -1202,12 +1202,12 @@ contract AssetIssuerTest is Test {
         issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
         vm.stopPrank();
 
-        // 恢复费用
+        // Restore fee
         vm.startPrank(owner);
         issuer.setIssueFee(assetID, 10000);
         vm.stopPrank();
 
-        // 测试余额不足
+        // Test insufficient balance
         vm.startPrank(ap);
         redeemOrderInfo.order.requester = ap;
         IERC20(assetTokenAddress).transfer(nonParticipant, IERC20(assetTokenAddress).balanceOf(ap));
@@ -1216,12 +1216,12 @@ contract AssetIssuerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试cancelMintRequest和cancelRedeemRequest的错误情况
+    // Test error cases for cancelMintRequest and cancelRedeemRequest
     function test_CancelRequestErrors() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1231,20 +1231,20 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // 测试非请求者取消
+        // Test non-requester canceling
         address nonRequester = vm.addr(0x10);
         vm.startPrank(nonRequester);
         vm.expectRevert("not order requester");
         issuer.cancelMintRequest(mintNonce, mintOrderInfo, false);
         vm.stopPrank();
 
-        // 测试取消不存在的请求
+        // Test canceling a non-existent request
         vm.startPrank(ap);
         vm.expectRevert("nonce too large");
         issuer.cancelMintRequest(999, mintOrderInfo, false);
         vm.stopPrank();
 
-        // 测试取消已确认的请求
+        // Test canceling a confirmed request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
@@ -1262,7 +1262,7 @@ contract AssetIssuerTest is Test {
         issuer.cancelMintRequest(mintNonce, mintOrderInfo, false);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
@@ -1270,25 +1270,25 @@ contract AssetIssuerTest is Test {
         uint256 redeemNonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 20000);
         vm.stopPrank();
 
-        // 测试非请求者取消
+        // Test non-requester canceling
         vm.startPrank(nonRequester);
         vm.expectRevert("not order requester");
         issuer.cancelRedeemRequest(redeemNonce, redeemOrderInfo);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 测试取消不存在的请求
+        // Test canceling a non-existent request
         vm.startPrank(ap);
         vm.expectRevert("nonce too large");
         issuer.cancelRedeemRequest(999, redeemOrderInfo);
         vm.stopPrank();
     }
 
-    // 测试rejectMintRequest和rejectRedeemRequest的错误情况
+    // Test error cases for rejectMintRequest and rejectRedeemRequest
     function test_RejectRequestErrors() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1298,20 +1298,20 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // 测试非所有者拒绝
+        // Test non-owner rejecting
         nonOwner = vm.addr(0x10);
         vm.startPrank(nonOwner);
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         issuer.rejectMintRequest(mintNonce, mintOrderInfo, false);
         vm.stopPrank();
 
-        // 测试拒绝不存在的请求
+        // Test rejecting a non-existent request
         vm.startPrank(owner);
         vm.expectRevert("nonce too large");
         issuer.rejectMintRequest(999, mintOrderInfo, false);
         vm.stopPrank();
 
-        // 测试拒绝已确认的请求
+        // Test rejecting a confirmed request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
@@ -1329,7 +1329,7 @@ contract AssetIssuerTest is Test {
         issuer.rejectMintRequest(mintNonce, mintOrderInfo, false);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
@@ -1337,13 +1337,13 @@ contract AssetIssuerTest is Test {
         uint256 redeemNonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
         vm.stopPrank();
 
-        // 测试非所有者拒绝
+        // Test non-owner rejecting
         vm.startPrank(nonOwner);
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         issuer.rejectRedeemRequest(redeemNonce);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 测试拒绝不存在的请求
+        // Test rejecting a non-existent request
         vm.startPrank(owner);
         vm.expectRevert("nonce too large");
         issuer.rejectRedeemRequest(999);
@@ -1353,7 +1353,7 @@ contract AssetIssuerTest is Test {
     function test_ClaimError() public {
         address tokenAddress = address(WETH);
 
-        // 测试没有可领取金额的情况
+        // Test case where there is nothing to claim
         vm.startPrank(ap);
         vm.expectRevert("nothing to claim");
         issuer.claim(tokenAddress);
@@ -1363,18 +1363,18 @@ contract AssetIssuerTest is Test {
     function test_GetParticipantError() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 测试索引超出范围的情况
+        // Test case where the index is out of range
         vm.expectRevert("out of range");
         issuer.getParticipant(assetID, 999);
     }
 
-    // 测试confirmRedeemRequest函数的错误情况
+    // Test error cases for confirmRedeemRequest function
     function test_ConfirmRedeemRequestErrors() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1384,21 +1384,21 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
@@ -1406,34 +1406,34 @@ contract AssetIssuerTest is Test {
         uint256 nonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
         vm.stopPrank();
 
-        // 测试非所有者确认
+        // Test non-owner confirming
         address nonOwner = vm.addr(0x10);
         vm.startPrank(nonOwner);
         bytes[] memory redeemInTxHashs = new bytes[](1);
         redeemInTxHashs[0] = "tx_hash";
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         issuer.confirmRedeemRequest(nonce, redeemOrderInfo, redeemInTxHashs, false);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 测试确认不存在的请求
+        // Test confirming a non-existent request
         vm.startPrank(owner);
         vm.expectRevert("nonce too large");
         issuer.confirmRedeemRequest(999, redeemOrderInfo, redeemInTxHashs, false);
         vm.stopPrank();
 
-        // 测试确认未被maker确认的请求
+        // Test confirming a request not confirmed by maker
         vm.startPrank(owner);
         vm.expectRevert();
         issuer.confirmRedeemRequest(nonce, redeemOrderInfo, redeemInTxHashs, false);
         vm.stopPrank();
     }
 
-    // 测试addMintRequest函数中的tokenset不匹配错误
+    // Test tokenset mismatch error in addMintRequest function
     function test_AddMintRequestTokensetMismatch() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // 修改订单中的输出代币集合，使其与资产代币的代币集合不匹配
+        // Modify the output token set in the order to mismatch the asset token's token set
         Token[] memory modifiedOutTokenset = new Token[](1);
         modifiedOutTokenset[0] = Token({
             chain: chain,
@@ -1449,7 +1449,7 @@ contract AssetIssuerTest is Test {
         OrderInfo memory modifiedOrderInfo =
             OrderInfo({order: modifiedOrder, orderHash: orderInfo.orderHash, orderSign: orderInfo.orderSign});
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1461,13 +1461,13 @@ contract AssetIssuerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试addRedeemRequest函数中的tokenset不匹配错误
+    // Test tokenset mismatch error in addRedeemRequest function
     function test_AddRedeemRequestTokensetMismatch() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1477,21 +1477,21 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单，但修改输入代币集合
+        // Create redeem order but modify the input token set
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         Token[] memory modifiedInTokenset = new Token[](1);
@@ -1519,18 +1519,18 @@ contract AssetIssuerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试addMintRequest函数中的订单无效错误
+    // Test invalid order error in addMintRequest function
     function test_AddMintRequestInvalidOrder() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // 修改订单签名，使其无效
+        // Modify the order signature to make it invalid
         bytes memory invalidSign = new bytes(65);
 
         OrderInfo memory invalidOrderInfo =
             OrderInfo({order: orderInfo.order, orderHash: orderInfo.orderHash, orderSign: invalidSign});
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1542,13 +1542,13 @@ contract AssetIssuerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试addRedeemRequest函数中的授权不足错误
+    // Test insufficient allowance error in addRedeemRequest function
     function test_AddRedeemRequestInsufficientAllowance() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1558,37 +1558,37 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单，但不授权
+        // Create redeem order but do not approve
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
-        // 不调用approve
+        // Do not call approve
         vm.expectRevert("not enough asset token allowance");
         issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
         vm.stopPrank();
     }
 
-    // 测试burnFor函数
+    // Test burnFor function
     function test_BurnForErrors() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1598,59 +1598,59 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 测试授权不足的情况
+        // Test insufficient allowance
         vm.startPrank(ap);
-        // 不调用approve
+        // Do not call approve
         vm.expectRevert("not enough allowance");
         issuer.burnFor(assetID, mintOrderInfo.order.outAmount);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 测试正常销毁
+        // Test normal burn
         vm.startPrank(ap);
         IERC20(assetTokenAddress).approve(address(issuer), mintOrderInfo.order.outAmount);
         issuer.burnFor(assetID, mintOrderInfo.order.outAmount);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 验证代币已销毁
+        // Verify that the token has been burned
         assertEq(IERC20(assetTokenAddress).balanceOf(ap), 0);
     }
 
-    // 测试withdraw函数
+    // Test withdraw function
     function test_WithdrawErrors() public {
-        // 向issuer合约转入一些代币
+        // Transfer some tokens to the issuer contract
         vm.startPrank(address(WETH));
         WETH.mint(address(issuer), 10 * 10 ** 18);
         vm.stopPrank();
 
-        // 测试非所有者调用
+        // Test non-owner call
         address nonOwner = vm.addr(0x10);
         vm.startPrank(nonOwner);
         address[] memory tokenAddresses = new address[](1);
         tokenAddresses[0] = address(WETH);
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, nonOwner));
         issuer.withdraw(tokenAddresses);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 测试在发行过程中提取
-        // 先铸造资产代币
+        // Test withdrawing during issuance
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1658,36 +1658,36 @@ contract AssetIssuerTest is Test {
         vm.startPrank(ap);
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         issuer.addMintRequest(assetID, mintOrderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 尝试提取，应该失败
+        // Attempt to withdraw, should fail
         vm.startPrank(owner);
         vm.expectRevert("is issuing");
         issuer.withdraw(tokenAddresses);
-        vm.stopPrank();
+        vm.stopPrank;
     }
 
-    // 测试checkRequestOrderInfo函数
+    // Test checkRequestOrderInfo function
     function test_CheckRequestOrderInfo() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
         vm.startPrank(ap);
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 创建不匹配的订单信息
+        // Create mismatched order information
         OrderInfo memory mismatchOrderInfo = createMintOrderInfo();
         bytes32 differentHash = keccak256("different_hash");
 
-        // 尝试取消请求，但使用不匹配的订单信息
+        // Attempt to cancel the request but use mismatched order information
         vm.startPrank(ap);
         vm.expectRevert("order hash not match");
         issuer.cancelMintRequest(
@@ -1695,276 +1695,276 @@ contract AssetIssuerTest is Test {
             OrderInfo({order: mismatchOrderInfo.order, orderHash: differentHash, orderSign: mismatchOrderInfo.orderSign}),
             false
         );
-        vm.stopPrank();
+        vm.stopPrank;
     }
 
-    // 测试addMintRequest函数中的余额不足错误
+    // Test insufficient balance error in addMintRequest function
     function test_AddMintRequestInsufficientBalance() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // 不给ap足够的代币
+        // Do not give ap enough tokens
         vm.startPrank(ap);
-        // 清空ap的WETH余额
+        // Clear ap's WETH balance
         uint256 balance = WETH.balanceOf(ap);
         WETH.transfer(owner, balance);
 
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         vm.expectRevert("not enough balance");
         issuer.addMintRequest(assetID, orderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
     }
 
-    // 测试addMintRequest函数中的授权不足错误
+    // Test insufficient allowance error in addMintRequest function
     function test_AddMintRequestInsufficientAllowance() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
         vm.startPrank(ap);
-        // 不授权或授权不足
+        // Do not approve or approve insufficient amount
         WETH.approve(address(issuer), 1);
         vm.expectRevert("not enough allowance");
         issuer.addMintRequest(assetID, orderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
     }
 
-    // 测试cancelMintRequest函数中的余额不足错误
+    // Test insufficient balance error in cancelMintRequest function
     function test_CancelMintRequestInsufficientBalance() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
         vm.startPrank(ap);
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 从issuer合约中移除代币，模拟余额不足
+        // Remove tokens from the issuer contract to simulate insufficient balance
         vm.startPrank(owner);
         address tokenAddress = vm.parseAddress(orderInfo.order.inTokenset[0].addr);
         uint256 issuerBalance = IERC20(tokenAddress).balanceOf(address(issuer));
-        vm.stopPrank();
+        vm.stopPrank;
         vm.startPrank(address(issuer));
         IERC20(tokenAddress).transfer(owner, issuerBalance);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 尝试取消请求，应该失败
+        // Attempt to cancel the request, should fail
         vm.warp(block.timestamp + 1 days);
         vm.startPrank(ap);
         vm.expectRevert("not enough balance");
         issuer.cancelMintRequest(nonce, orderInfo, false);
-        vm.stopPrank();
+        vm.stopPrank;
     }
 
-    // 测试rejectMintRequest函数中的余额不足错误
+    // Test insufficient balance error in rejectMintRequest function
     function test_RejectMintRequestInsufficientBalance() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
         vm.startPrank(ap);
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // maker拒绝请求
+        // Maker rejects the request
         vm.startPrank(pmm);
         swap.makerRejectSwapRequest(orderInfo);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 从issuer合约中移除代币，模拟余额不足
+        // Remove tokens from the issuer contract to simulate insufficient balance
         vm.startPrank(owner);
         address tokenAddress = vm.parseAddress(orderInfo.order.inTokenset[0].addr);
         uint256 issuerBalance = IERC20(tokenAddress).balanceOf(address(issuer));
-        vm.stopPrank();
+        vm.stopPrank;
         vm.startPrank(address(issuer));
         IERC20(tokenAddress).transfer(owner, issuerBalance);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 尝试拒绝请求，应该失败
+        // Attempt to reject the request, should fail
         vm.startPrank(owner);
         vm.expectRevert("not enough balance");
         issuer.rejectMintRequest(nonce, orderInfo, false);
-        vm.stopPrank();
+        vm.stopPrank;
     }
 
-    // 测试confirmMintRequest函数中的余额不足错误
+    // Test insufficient balance error in confirmMintRequest function
     function test_ConfirmMintRequestInsufficientBalance() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
         vm.startPrank(ap);
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 从issuer合约中移除代币，模拟余额不足
+        // Remove tokens from the issuer contract to simulate insufficient balance
         vm.startPrank(owner);
         address tokenAddress = vm.parseAddress(orderInfo.order.inTokenset[0].addr);
         uint256 issuerBalance = IERC20(tokenAddress).balanceOf(address(issuer));
-        vm.stopPrank();
+        vm.stopPrank;
         vm.startPrank(address(issuer));
         IERC20(tokenAddress).transfer(owner, issuerBalance);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 尝试确认请求，应该失败
+        // Attempt to confirm the request, should fail
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         vm.expectRevert("not enough balance");
         issuer.confirmMintRequest(nonce, orderInfo, inTxHashs);
-        vm.stopPrank();
+        vm.stopPrank;
     }
 
-    // 测试confirmRedeemRequest函数中的余额不足错误
+    // Test insufficient balance error in confirmRedeemRequest function
     function test_ConfirmRedeemRequestInsufficientBalance() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
         vm.startPrank(ap);
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
         IERC20(assetTokenAddress).approve(address(issuer), mintOrderInfo.order.outAmount);
         uint256 nonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory redeemOutTxHashs = new bytes[](1);
         redeemOutTxHashs[0] = "tx_hash";
         WETH.approve(address(swap), 1e15 * 10 ** 18);
         swap.makerConfirmSwapRequest(redeemOrderInfo, redeemOutTxHashs);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 移除资产代币
+        // Remove asset token
         vm.startPrank(address(issuer));
         IERC20(assetTokenAddress).transfer(owner, IERC20(assetTokenAddress).balanceOf(address(issuer)));
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 尝试确认赎回请求，应该失败
+        // Attempt to confirm the redeem request, should fail
         vm.startPrank(owner);
         bytes[] memory redeemInTxHashs = new bytes[](1);
         redeemInTxHashs[0] = "tx_hash";
         vm.expectRevert("not enough asset token to burn");
         issuer.confirmRedeemRequest(nonce, redeemOrderInfo, redeemInTxHashs, false);
-        vm.stopPrank();
+        vm.stopPrank;
     }
 
-    // 测试rejectRedeemRequest函数中的余额不足错误
+    // Test insufficient balance error in rejectRedeemRequest function
     function test_RejectRedeemRequestInsufficientBalance() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
         vm.startPrank(ap);
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
         IERC20(assetTokenAddress).approve(address(issuer), mintOrderInfo.order.outAmount);
         uint256 nonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // maker拒绝请求
+        // Maker rejects the request
         vm.startPrank(pmm);
         swap.makerRejectSwapRequest(redeemOrderInfo);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 从issuer合约中移除代币，模拟余额不足
+        // Remove tokens from the issuer contract to simulate insufficient balance
 
-        // 移除资产代币
+        // Remove asset token
         vm.startPrank(address(issuer));
         IERC20(assetTokenAddress).transfer(owner, IERC20(assetTokenAddress).balanceOf(address(issuer)));
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 尝试拒绝赎回请求，应该失败
+        // Attempt to reject the redeem request, should fail
         vm.startPrank(owner);
         vm.expectRevert("not enough asset token to transfer");
         issuer.rejectRedeemRequest(nonce);
-        vm.stopPrank();
+        vm.stopPrank;
     }
 
-    // 测试confirmRedeemRequest函数中的输出代币余额不足错误
+    // Test insufficient output token balance error in confirmRedeemRequest function
     function test_ConfirmRedeemRequestOutputInsufficientBalance() public {
-        // 先铸造资产代币
+        // Mint asset token first
         OrderInfo memory mintOrderInfo = createMintOrderInfo();
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
         vm.stopPrank();
@@ -1974,29 +1974,28 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 创建赎回订单
+        // Create redeem order
         OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
         vm.startPrank(ap);
         IERC20(assetTokenAddress).approve(address(issuer), mintOrderInfo.order.outAmount);
         uint256 nonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
         vm.stopPrank();
-
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory redeemOutTxHashs = new bytes[](1);
         redeemOutTxHashs[0] = "tx_hash";
@@ -2004,18 +2003,18 @@ contract AssetIssuerTest is Test {
         swap.makerConfirmSwapRequest(redeemOrderInfo, redeemOutTxHashs);
         vm.stopPrank();
 
-        // 从issuer合约中移除输出代币，模拟余额不足
+        // Remove output tokens from the issuer contract to simulate insufficient balance
         vm.startPrank(owner);
         address outTokenAddress = vm.parseAddress(redeemOrderInfo.order.outTokenset[0].addr);
         vm.stopPrank();
-        // 确保issuer没有足够的输出代币
+        // Ensure the issuer does not have enough output tokens
         vm.startPrank(address(issuer));
         if (IERC20(outTokenAddress).balanceOf(address(issuer)) > 0) {
             IERC20(outTokenAddress).transfer(owner, IERC20(outTokenAddress).balanceOf(address(issuer)));
         }
         vm.stopPrank();
 
-        // 尝试确认赎回请求，应该失败
+        // Attempt to confirm the redeem request, should fail
         vm.startPrank(owner);
         bytes[] memory redeemInTxHashs = new bytes[](1);
         redeemInTxHashs[0] = "tx_hash";
@@ -2024,130 +2023,130 @@ contract AssetIssuerTest is Test {
         vm.stopPrank();
     }
 
-    // 测试withdraw函数中的零地址处理
+    // Test zero address handling in withdraw function
     function test_WithdrawZeroAddress() public {
-        // 向issuer合约转入一些代币
+        // Transfer some tokens to the issuer contract
         vm.startPrank(address(WETH));
         WETH.mint(address(issuer), 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 测试包含零地址的情况
+        // Test including zero address
         vm.startPrank(owner);
         address[] memory tokenAddresses = new address[](2);
         tokenAddresses[0] = address(WETH);
-        tokenAddresses[1] = address(0); // 零地址
+        tokenAddresses[1] = address(0); // Zero address
 
-        // 应该正常执行，不会因为零地址而失败
+        // Should execute normally without failing due to zero address
         issuer.withdraw(tokenAddresses);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 验证WETH已提取
+        // Verify that WETH has been withdrawn
         assertEq(WETH.balanceOf(owner), 10 * 10 ** 18);
     }
 
-    // 测试withdraw函数中的tokenClaimables处理
+    // Test tokenClaimables handling in withdraw function
     function test_WithdrawWithClaimables() public {
-        // 向issuer合约转入一些代币
+        // Transfer some tokens to the issuer contract
         vm.startPrank(address(WETH));
         WETH.mint(address(issuer), 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 设置一些可领取的代币
+        // Set some claimable tokens
         uint256 assetID = AssetToken(assetTokenAddress).id();
         OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
         vm.startPrank(ap);
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 强制取消铸造请求，使ap有可领取的代币
+        // Force-cancel mint request to make ap have claimable tokens
         vm.startPrank(ap);
         vm.warp(block.timestamp + 1 days);
         issuer.cancelMintRequest(nonce, orderInfo, true);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 获取可领取金额
+        // Get the claimable amount
         address tokenAddress = vm.parseAddress(orderInfo.order.inTokenset[0].addr);
         uint256 claimable = issuer.claimables(tokenAddress, ap);
         assertTrue(claimable > 0);
 
-        // 尝试提取代币
+        // Attempt to withdraw tokens
         vm.startPrank(owner);
         address[] memory tokenAddresses = new address[](1);
         tokenAddresses[0] = tokenAddress;
         issuer.withdraw(tokenAddresses);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 验证只提取了非可领取部分
-        uint256 expectedWithdrawn = 10 * 10 ** 18; // 初始转入的金额
+        // Verify that only the non-claimable portion was withdrawn
+        uint256 expectedWithdrawn = 10 * 10 ** 18; // Initial transferred amount
         uint256 tokenClaimable = issuer.tokenClaimables(tokenAddress);
     }
 
-    // 测试addParticipant和removeParticipant函数的重复添加和移除
+    // Test duplicate additions and removals in addParticipant and removeParticipant functions
     function test_ParticipantDuplicateOperations() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 测试重复添加同一参与者
+        // Test adding the same participant twice
         vm.startPrank(owner);
-        // ap已经是参与者，再次添加
+        // ap is already a participant, add again
         issuer.addParticipant(assetID, ap);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 验证参与者数量没有变化
+        // Verify that the participant count does not change
         assertEq(issuer.getParticipantLength(assetID), 1);
 
-        // 测试移除不存在的参与者
+        // Test removing a non-existent participant
         vm.startPrank(owner);
         address nonParticipant = vm.addr(0x10);
         issuer.removeParticipant(assetID, nonParticipant);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 验证参与者数量没有变化
+        // Verify that the participant count does not change
         assertEq(issuer.getParticipantLength(assetID), 1);
     }
 
-    // 测试confirmMintRequest函数中的feeTokenAmount为0的情况
+    // Test zero fee in confirmMintRequest function
     function test_ConfirmMintRequestZeroFee() public {
         uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // 设置发行费用为0
+        // Set issuance fee to 0
         vm.startPrank(owner);
         issuer.setIssueFee(assetID, 0);
-        vm.stopPrank();
+        vm.stopPrank;
 
         OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // 铸造代币给ap
+        // Mint tokens to ap
         vm.startPrank(address(WETH));
         WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+        vm.stopPrank;
 
         vm.startPrank(ap);
         WETH.approve(address(issuer), 1e15 * 10 ** 18);
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 0);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(pmm);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 确认铸造请求
+        // Confirm mint request
         vm.startPrank(owner);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash";
         issuer.confirmMintRequest(nonce, orderInfo, inTxHashs);
-        vm.stopPrank();
+        vm.stopPrank;
 
-        // 验证请求已确认
+        // Verify that the request has been confirmed
         Request memory request = issuer.getMintRequest(nonce);
         assertEq(uint256(request.status), uint256(RequestStatus.CONFIRMED));
     }

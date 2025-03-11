@@ -22,20 +22,20 @@ contract SwapTest is Test {
     string chain = "SETH";
 
     function setUp() public {
-        // 部署代币
+        // Deploy tokens
         WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
         WETH = new MockToken("Wrapped ETH", "WETH", 18);
 
         vm.startPrank(owner);
 
-        // 部署Swap合约
+        // Deploy Swap contract
         swap = Swap(address(new ERC1967Proxy(address(new Swap()), abi.encodeCall(Swap.initialize, (owner, chain)))));
 
-        // 设置角色
+        // Set roles
         swap.grantRole(swap.MAKER_ROLE(), maker);
         swap.grantRole(swap.TAKER_ROLE(), taker);
 
-        // 设置白名单地址
+        // Set whitelist addresses
         string[] memory receivers = new string[](2);
         receivers[0] = vm.toString(receiver);
         receivers[1] = vm.toString(taker);
@@ -46,7 +46,7 @@ contract SwapTest is Test {
 
         swap.setTakerAddresses(receivers, senders);
 
-        // 添加代币白名单
+        // Add token whitelist
         Token[] memory whiteListTokens = new Token[](2);
         whiteListTokens[0] = Token({
             chain: chain,
@@ -67,9 +67,9 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 创建订单信息
+    // Create order information
     function createOrderInfo() public returns (OrderInfo memory) {
-        // 创建输入代币集合
+        // Create input token set
         Token[] memory inTokenset = new Token[](1);
         inTokenset[0] = Token({
             chain: chain,
@@ -79,7 +79,7 @@ contract SwapTest is Test {
             amount: 1 * 10 ** 8 // 1 BTC
         });
 
-        // 创建输出代币集合
+        // Create output token set
         Token[] memory outTokenset = new Token[](1);
         outTokenset[0] = Token({
             chain: chain,
@@ -89,7 +89,7 @@ contract SwapTest is Test {
             amount: 20 * 10 ** 18 // 20 ETH
         });
 
-        // 创建订单
+        // Create order
         Order memory order = Order({
             chain: chain,
             maker: maker,
@@ -99,30 +99,30 @@ contract SwapTest is Test {
             inAddressList: new string[](1),
             outAddressList: new string[](1),
             inAmount: 10 ** 8, // 1 BTC
-            outAmount: 10 ** 8, // 按比例
-            deadline: block.timestamp + 3600, // 1小时后过期
+            outAmount: 10 ** 8, // Proportionally
+            deadline: block.timestamp + 3600, // Expires in 1 hour
             requester: taker
         });
 
         order.inAddressList[0] = vm.toString(maker);
         order.outAddressList[0] = vm.toString(receiver);
 
-        // 计算订单哈希
+        // Calculate order hash
         bytes32 orderHash = keccak256(abi.encode(order));
 
-        // 签名
+        // Sign
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderHash);
         bytes memory orderSign = abi.encodePacked(r, s, v);
         vm.stopPrank();
 
-        // 创建订单信息
+        // Create order information
         OrderInfo memory orderInfo = OrderInfo({order: order, orderHash: orderHash, orderSign: orderSign});
 
         return orderInfo;
     }
 
-    // 测试初始化
+    // Test initialization
     function test_Initialize() public {
         assertEq(swap.chain(), chain);
         assertTrue(swap.hasRole(swap.DEFAULT_ADMIN_ROLE(), owner));
@@ -130,11 +130,11 @@ contract SwapTest is Test {
         assertTrue(swap.hasRole(swap.TAKER_ROLE(), taker));
     }
 
-    // 测试添加白名单代币
+    // Test adding whitelist tokens
     function test_AddWhiteListTokens() public {
         vm.startPrank(owner);
 
-        // 添加新代币
+        // Add new token
         MockToken USDT = new MockToken("Tether USD", "USDT", 6);
         Token[] memory newTokens = new Token[](1);
         newTokens[0] = Token({
@@ -147,21 +147,21 @@ contract SwapTest is Test {
 
         swap.addWhiteListTokens(newTokens);
 
-        // 验证白名单长度
+        // Verify whitelist length
         assertEq(swap.getWhiteListTokenLength(), 3);
 
-        // 验证新添加的代币
+        // Verify the newly added token
         Token memory token = swap.getWhiteListToken(2);
         assertEq(token.symbol, "USDT");
 
         vm.stopPrank();
     }
 
-    // 测试移除白名单代币
+    // Test removing whitelist tokens
     function test_RemoveWhiteListTokens() public {
         vm.startPrank(owner);
 
-        // 移除WBTC
+        // Remove WBTC
         Token[] memory tokensToRemove = new Token[](1);
         tokensToRemove[0] = Token({
             chain: chain,
@@ -173,17 +173,17 @@ contract SwapTest is Test {
 
         swap.removeWhiteListTokens(tokensToRemove);
 
-        // 验证白名单长度
+        // Verify whitelist length
         assertEq(swap.getWhiteListTokenLength(), 1);
 
         vm.stopPrank();
     }
 
-    // 测试设置Taker地址
+    // Test setting Taker addresses
     function test_SetTakerAddresses() public {
         vm.startPrank(owner);
 
-        // 设置新的Taker地址
+        // Set new Taker addresses
         string[] memory newReceivers = new string[](1);
         newReceivers[0] = vm.toString(vm.addr(0x6));
 
@@ -192,7 +192,7 @@ contract SwapTest is Test {
 
         swap.setTakerAddresses(newReceivers, newSenders);
 
-        // 验证新的Taker地址
+        // Verify the new Taker addresses
         (string[] memory receivers, string[] memory senders) = swap.getTakerAddresses();
         assertEq(receivers.length, 1);
         assertEq(senders.length, 1);
@@ -202,31 +202,31 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 测试暂停和恢复
+    // Test pause and unpause
     function test_PauseAndUnpause() public {
         vm.startPrank(owner);
 
-        // 暂停
+        // Pause
         swap.pause();
         assertTrue(swap.paused());
 
-        // 恢复
+        // Unpause
         swap.unpause();
         assertFalse(swap.paused());
 
         vm.stopPrank();
     }
 
-    // 测试添加交换请求
+    // Test adding swap request
     function test_AddSwapRequest() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
         vm.startPrank(taker);
 
-        // 添加交换请求
+        // Add swap request
         swap.addSwapRequest(orderInfo, false, false);
 
-        // 验证交换请求
+        // Verify swap request
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.PENDING));
         assertEq(request.requester, taker);
@@ -234,26 +234,26 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 测试添加交换请求 - 合约内转账
+    // Test adding swap request - by contract
     function test_AddSwapRequest_ByContract() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 铸造代币给maker
+        // Mint tokens to maker
         vm.startPrank(address(WETH));
         WETH.mint(maker, 100 * 10 ** 18);
         vm.stopPrank();
 
-        // maker授权swap合约
+        // Maker approves swap contract
         vm.startPrank(maker);
         WETH.approve(address(swap), 100 * 10 ** 18);
         vm.stopPrank();
 
         vm.startPrank(taker);
 
-        // 添加交换请求（输出通过合约）
+        // Add swap request (output via contract)
         swap.addSwapRequest(orderInfo, false, true);
 
-        // 验证交换请求
+        // Verify swap request
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.PENDING));
         assertEq(request.requester, taker);
@@ -262,210 +262,210 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 测试maker确认交换请求 - 非合约转账
+    // Test maker confirm swap request - not by contract
     function test_MakerConfirmSwapRequest_NotByContract() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // maker确认
+        // Maker confirms
         vm.startPrank(maker);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash_123";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 验证状态
+        // Verify status
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.MAKER_CONFIRMED));
         assertEq(bytes32(request.outTxHashs[0]), bytes32("tx_hash_123"));
     }
 
-    // 测试maker确认交换请求 - 合约转账
+    // Test maker confirm swap request - by contract
     function test_MakerConfirmSwapRequest_ByContract() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, true);
         vm.stopPrank();
 
-        // 铸造代币给maker
+        // Mint tokens to maker
         vm.startPrank(address(WETH));
         WETH.mint(maker, 100 * 10 ** 18);
         vm.stopPrank();
 
-        // maker确认
+        // Maker confirms
         vm.startPrank(maker);
         WETH.approve(address(swap), 100 * 10 ** 18);
         bytes[] memory outTxHashs = new bytes[](0);
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 验证状态
+        // Verify status
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.MAKER_CONFIRMED));
 
-        // 验证代币转移
+        // Verify token transfer
         assertEq(WETH.balanceOf(receiver), 20 * 10 ** 18);
     }
 
-    // 测试taker确认交换请求 - 非合约转账
+    // Test taker confirm swap request - not by contract
     function test_ConfirmSwapRequest_NotByContract() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // maker确认
+        // Maker confirms
         vm.startPrank(maker);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash_123";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // taker确认
+        // Taker confirms
         vm.startPrank(taker);
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash_456";
         swap.confirmSwapRequest(orderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 验证状态
+        // Verify status
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.CONFIRMED));
         assertEq(bytes32(request.inTxHashs[0]), bytes32("tx_hash_456"));
     }
 
-    // 测试taker确认交换请求 - 合约转账
+    // Test taker confirm swap request - by contract
     function test_ConfirmSwapRequest_ByContract() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, true, false);
         vm.stopPrank();
 
-        // maker确认
+        // Maker confirms
         vm.startPrank(maker);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash_123";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 铸造代币给taker
+        // Mint tokens to taker
         vm.startPrank(address(WBTC));
         WBTC.mint(taker, 2 * 10 ** 8);
         vm.stopPrank();
 
-        // taker确认
+        // Taker confirms
         vm.startPrank(taker);
         WBTC.approve(address(swap), 2 * 10 ** 8);
         bytes[] memory inTxHashs = new bytes[](0);
         swap.confirmSwapRequest(orderInfo, inTxHashs);
         vm.stopPrank();
 
-        // 验证状态
+        // Verify status
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.CONFIRMED));
 
-        // 验证代币转移
+        // Verify token transfer
         assertEq(WBTC.balanceOf(maker), 1 * 10 ** 8);
     }
 
-    // 测试回滚交换请求
+    // Test rollback swap request
     function test_RollbackSwapRequest() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // maker确认
+        // Maker confirms
         vm.startPrank(maker);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash_123";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // taker回滚
+        // Taker rollbacks
         vm.startPrank(taker);
         swap.rollbackSwapRequest(orderInfo);
         vm.stopPrank();
 
-        // 验证状态
+        // Verify status
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.PENDING));
     }
 
-    // 测试取消交换请求
+    // Test cancel swap request
     function test_CancelSwapRequest() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
 
-        // 前进时间
-        vm.warp(block.timestamp + 3601); // 超过MAX_MARKER_CONFIRM_DELAY
+        // Advance time
+        vm.warp(block.timestamp + 3601); // Exceeds MAX_MARKER_CONFIRM_DELAY
 
-        // 取消请求
+        // Cancel request
         swap.cancelSwapRequest(orderInfo);
         vm.stopPrank();
 
-        // 验证状态
+        // Verify status
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.CANCEL));
     }
 
-    // 测试强制取消交换请求
+    // Test force cancel swap request
     function test_ForceCancelSwapRequest() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // 前进时间
-        vm.warp(block.timestamp + 7 hours); // 超过EXPIRATION
+        // Advance time
+        vm.warp(block.timestamp + 7 hours); // Exceeds EXPIRATION
 
-        // 管理员强制取消
+        // Admin force cancels
         vm.startPrank(owner);
         swap.forceCancelSwapRequest(orderInfo);
         vm.stopPrank();
 
-        // 验证状态
+        // Verify status
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.FORCE_CANCEL));
     }
 
-    // 测试maker拒绝交换请求
+    // Test maker reject swap request
     function test_MakerRejectSwapRequest() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // maker拒绝
+        // Maker rejects
         vm.startPrank(maker);
         swap.makerRejectSwapRequest(orderInfo);
         vm.stopPrank();
 
-        // 验证状态
+        // Verify status
         SwapRequest memory request = swap.getSwapRequest(orderInfo.orderHash);
         assertEq(uint256(request.status), uint256(SwapRequestStatus.REJECTED));
     }
 
-    // 测试错误情况：非管理员添加白名单代币
+    // Test error case: non-admin adding whitelist tokens
     function test_AddWhiteListTokens_NotAdmin() public {
         vm.startPrank(nonOwner);
 
@@ -478,14 +478,14 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 测试错误情况：订单已过期
+    // Test error case: order expired
     function test_AddSwapRequest_Expired() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改订单截止时间为过去
+        // Modify order deadline to the past
         orderInfo.order.deadline = block.timestamp - 1;
 
-        // 重新计算哈希和签名
+        // Recalculate hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderInfo.orderHash);
@@ -494,42 +494,42 @@ contract SwapTest is Test {
 
         vm.startPrank(taker);
 
-        // 尝试添加过期的交换请求
+        // Attempt to add an expired swap request
         vm.expectRevert();
         swap.addSwapRequest(orderInfo, false, false);
 
         vm.stopPrank();
     }
 
-    // 测试错误情况：非taker取消请求
+    // Test error case: non-taker cancels request
     function test_CancelSwapRequest_NotTaker() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // 前进时间
+        // Advance time
         vm.warp(block.timestamp + 3601);
 
-        // 非taker尝试取消
+        // Non-taker attempts to cancel
         vm.startPrank(nonOwner);
         vm.expectRevert();
         swap.cancelSwapRequest(orderInfo);
         vm.stopPrank();
     }
 
-    // 测试错误情况：非maker确认请求
+    // Test error case: non-maker confirms request
     function test_MakerConfirmSwapRequest_NotMaker() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // 非maker尝试确认
+        // Non-maker attempts to confirm
         vm.startPrank(nonOwner);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash_123";
@@ -538,16 +538,16 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 测试错误情况：合约转账时余额不足
+    // Test error case: insufficient balance for contract transfer
     function test_MakerConfirmSwapRequest_InsufficientBalance() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, true);
         vm.stopPrank();
 
-        // maker尝试确认但余额不足
+        // Maker attempts to confirm but has insufficient balance
         vm.startPrank(maker);
         WETH.approve(address(swap), 100 * 10 ** 18);
         bytes[] memory outTxHashs = new bytes[](0);
@@ -556,21 +556,21 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 测试错误情况：合约转账时授权不足
+    // Test error case: insufficient allowance for contract transfer
     function test_MakerConfirmSwapRequest_InsufficientAllowance() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, true);
         vm.stopPrank();
 
-        // 铸造代币给maker但不授权
+        // Mint tokens to maker but do not approve
         vm.startPrank(address(WETH));
         WETH.mint(maker, 100 * 10 ** 18);
         vm.stopPrank();
 
-        // maker尝试确认但授权不足
+        // Maker attempts to confirm but has insufficient allowance
         vm.startPrank(maker);
         bytes[] memory outTxHashs = new bytes[](0);
         vm.expectRevert("not enough allowance");
@@ -591,49 +591,49 @@ contract SwapTest is Test {
     function test_CheckOrderInfo_InvalidOrderHash() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改订单哈希使其不匹配
+        // Modify the order hash to make it mismatch
         orderInfo.orderHash = bytes32(uint256(orderInfo.orderHash) + 1);
 
         uint256 code = swap.checkOrderInfo(orderInfo);
-        assertEq(code, 2); // 订单哈希不匹配
+        assertEq(code, 2); // Order hash mismatch
     }
 
-    // 测试错误情况：签名无效
+    // Test error case: invalid signature
     function test_CheckOrderInfo_InvalidSignature() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改签名使其无效
+        // Modify the signature to make it invalid
         orderInfo.orderSign = abi.encodePacked(bytes32(0), bytes32(0), uint8(0));
 
         uint256 code = swap.checkOrderInfo(orderInfo);
-        assertEq(code, 3); // 签名无效
+        assertEq(code, 3); // Invalid signature
     }
 
-    // 测试错误情况：订单已存在
+    // Test error case: order already exists
     function test_CheckOrderInfo_OrderExists() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 先添加订单
+        // Add the order first
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // 再次检查订单
+        // Check the order again
         uint256 code = swap.checkOrderInfo(orderInfo);
-        assertEq(code, 4); // 订单已存在
+        assertEq(code, 4); // Order already exists
     }
 
-    // 测试错误情况：输入地址列表长度不匹配
+    // Test error case: input address list length mismatch
     function test_CheckOrderInfo_InAddressListLengthMismatch() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改输入地址列表长度
+        // Modify the input address list length
         string[] memory newInAddressList = new string[](2);
         newInAddressList[0] = orderInfo.order.inAddressList[0];
         newInAddressList[1] = vm.toString(nonOwner);
         orderInfo.order.inAddressList = newInAddressList;
 
-        // 重新计算订单哈希并签名
+        // Recalculate the order hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderInfo.orderHash);
@@ -641,20 +641,20 @@ contract SwapTest is Test {
         vm.stopPrank();
 
         uint256 code = swap.checkOrderInfo(orderInfo);
-        assertEq(code, 5); // 输入地址列表长度不匹配
+        assertEq(code, 5); // Input address list length mismatch
     }
 
-    // 测试错误情况：输出地址列表长度不匹配
+    // Test error case: output address list length mismatch
     function test_CheckOrderInfo_OutAddressListLengthMismatch() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改输出地址列表长度
+        // Modify the output address list length
         string[] memory newOutAddressList = new string[](2);
         newOutAddressList[0] = orderInfo.order.outAddressList[0];
         newOutAddressList[1] = vm.toString(receiver);
         orderInfo.order.outAddressList = newOutAddressList;
 
-        // 重新计算订单哈希并签名
+        // Recalculate the order hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderInfo.orderHash);
@@ -662,17 +662,17 @@ contract SwapTest is Test {
         vm.stopPrank();
 
         uint256 code = swap.checkOrderInfo(orderInfo);
-        assertEq(code, 6); // 输出地址列表长度不匹配
+        assertEq(code, 6); // Output address list length mismatch
     }
 
-    // 测试错误情况：maker不是MAKER_ROLE
+    // Test error case: maker is not MAKER_ROLE
     function test_CheckOrderInfo_NotMakerRole() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改maker为非MAKER_ROLE
+        // Modify the maker to a non-MAKER_ROLE
         orderInfo.order.maker = nonOwner;
 
-        // 重新计算订单哈希并签名
+        // Recalculate the order hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(nonOwner);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x5, orderInfo.orderHash);
@@ -680,17 +680,17 @@ contract SwapTest is Test {
         vm.stopPrank();
 
         uint256 code = swap.checkOrderInfo(orderInfo);
-        assertEq(code, 7); // 不是MAKER_ROLE
+        assertEq(code, 7); // Not MAKER_ROLE
     }
 
-    // 测试错误情况：输出地址不在白名单中
+    // Test error case: output address not whitelisted
     function test_CheckOrderInfo_OutAddressNotWhitelisted() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改输出地址为非白名单地址
+        // Modify the output address to a non-whitelisted address
         orderInfo.order.outAddressList[0] = vm.toString(nonOwner);
 
-        // 重新计算订单哈希并签名
+        // Recalculate the order hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderInfo.orderHash);
@@ -698,17 +698,17 @@ contract SwapTest is Test {
         vm.stopPrank();
 
         uint256 code = swap.checkOrderInfo(orderInfo);
-        assertEq(code, 8); // 输出地址不在白名单中
+        assertEq(code, 8); // Output address not whitelisted
     }
 
-    // 测试错误情况：链不匹配
+    // Test error case: chain mismatch
     function test_CheckOrderInfo_ChainMismatch() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改链
+        // Modify the chain
         orderInfo.order.chain = "ETH";
 
-        // 重新计算订单哈希并签名
+        // Recalculate the order hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderInfo.orderHash);
@@ -716,18 +716,18 @@ contract SwapTest is Test {
         vm.stopPrank();
 
         uint256 code = swap.checkOrderInfo(orderInfo);
-        assertEq(code, 9); // 链不匹配
+        assertEq(code, 9); // Chain mismatch
     }
 
-    // 测试错误情况：输入代币不在白名单中
+    // Test error case: input token not whitelisted
     function test_CheckOrderInfo_InTokenNotWhitelisted() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改输入代币为非白名单代币
+        // Modify the input token to a non-whitelisted token
         orderInfo.order.inTokenset[0].symbol = "USDT";
         orderInfo.order.inTokenset[0].addr = vm.toString(vm.addr(0x9));
 
-        // 重新计算订单哈希并签名
+        // Recalculate the order hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderInfo.orderHash);
@@ -735,18 +735,18 @@ contract SwapTest is Test {
         vm.stopPrank();
 
         uint256 code = swap.checkOrderInfo(orderInfo);
-        assertEq(code, 10); // 输入代币不在白名单中
+        assertEq(code, 10); // Input token not whitelisted
     }
 
-    // 测试错误情况：输出代币不在白名单中
+    // Test error case: output token not whitelisted
     function test_CheckOrderInfo_OutTokenNotWhitelisted() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改输出代币为非白名单代币
+        // Modify the output token to a non-whitelisted token
         orderInfo.order.outTokenset[0].symbol = "USDT";
         orderInfo.order.outTokenset[0].addr = vm.toString(vm.addr(0x9));
 
-        // 重新计算订单哈希并签名
+        // Recalculate the order hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderInfo.orderHash);
@@ -754,254 +754,254 @@ contract SwapTest is Test {
         vm.stopPrank();
 
         uint256 code = swap.checkOrderInfo(orderInfo);
-        assertEq(code, 11); // 输出代币不在白名单中
+        assertEq(code, 11); // Output token not whitelisted
     }
 
-    // 测试错误情况：订单哈希不存在
+    // Test error case: order hash does not exist
     function test_ValidateOrderInfo_OrderHashNotExists() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 尝试验证不存在的订单
+        // Attempt to validate a non-existent order
         vm.startPrank(taker);
         vm.expectRevert("order hash not exists");
         swap.cancelSwapRequest(orderInfo);
         vm.stopPrank();
     }
 
-    // 测试错误情况：订单哈希无效
+    // Test error case: order hash is invalid
     function test_ValidateOrderInfo_InvalidOrderHash() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 先添加订单
+        // Add the order first
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
 
-        // 修改订单但保持哈希不变
+        // Modify the order but keep the hash unchanged
         orderInfo.order.nonce = 2;
 
-        // 尝试验证修改后的订单
+        // Attempt to validate the modified order
         vm.expectRevert("order hash invalid");
         swap.cancelSwapRequest(orderInfo);
         vm.stopPrank();
     }
 
-    // 测试getOrderHashs函数
+    // Test getOrderHashs function
     function test_GetOrderHashs() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加订单
+        // Add the order
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // 获取订单哈希列表
+        // Get the order hash list
         bytes32[] memory orderHashs = swap.getOrderHashs();
         assertEq(orderHashs.length, 1);
         assertEq(orderHashs[0], orderInfo.orderHash);
     }
 
-    // 测试getOrderHashLength函数
+    // Test getOrderHashLength function
     function test_GetOrderHashLength() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加订单
+        // Add the order
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // 获取订单哈希长度
+        // Get the order hash length
         uint256 length = swap.getOrderHashLength();
         assertEq(length, 1);
     }
 
-    // 测试getOrderHash函数
+    // Test getOrderHash function
     function test_GetOrderHash() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加订单
+        // Add the order
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // 获取订单哈希
+        // Get the order hash
         bytes32 orderHash = swap.getOrderHash(0);
         assertEq(orderHash, orderInfo.orderHash);
     }
 
-    // 测试getOrderHash函数越界错误
+    // Test getOrderHash function out-of-range error
     function test_GetOrderHash_OutOfRange() public {
-        // 尝试获取不存在的订单哈希
+        // Attempt to get a non-existent order hash
         vm.expectRevert("out of range");
         swap.getOrderHash(0);
     }
 
-    // 测试checkTokenset函数错误情况：代币链不匹配
+    // Test checkTokenset function error case: token chain mismatch
     function test_AddSwapRequest_ChainMismatch() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改代币链
+        // Modify the token chain
         orderInfo.order.inTokenset[0].chain = "ETH";
 
-        // 重新计算订单哈希并签名
+        // Recalculate the order hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderInfo.orderHash);
         orderInfo.orderSign = abi.encodePacked(r, s, v);
         vm.stopPrank();
 
-        // 尝试添加订单
+        // Attempt to add the order
         vm.startPrank(taker);
         vm.expectRevert("order not valid");
         swap.addSwapRequest(orderInfo, true, false);
         vm.stopPrank();
     }
 
-    // 测试checkTokenset函数错误情况：代币地址为零
+    // Test checkTokenset function error case: token address is zero
     function test_AddSwapRequest_ZeroTokenAddress() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改代币地址为零
+        // Modify the token address to zero
         orderInfo.order.inTokenset[0].addr = "0x0000000000000000000000000000000000000000";
 
-        // 重新计算订单哈希并签名
+        // Recalculate the order hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderInfo.orderHash);
         orderInfo.orderSign = abi.encodePacked(r, s, v);
         vm.stopPrank();
 
-        // 尝试添加订单
+        // Attempt to add the order
         vm.startPrank(taker);
         vm.expectRevert("order not valid");
         swap.addSwapRequest(orderInfo, true, false);
         vm.stopPrank();
     }
 
-    // 测试checkTokenset函数错误情况：接收地址为零
+    // Test checkTokenset function error case: receive address is zero
     function test_AddSwapRequest_ZeroReceiveAddress() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 修改接收地址为零
+        // Modify the receive address to zero
         orderInfo.order.inAddressList[0] = "0x0000000000000000000000000000000000000000";
 
-        // 重新计算订单哈希并签名
+        // Recalculate the order hash and sign
         orderInfo.orderHash = keccak256(abi.encode(orderInfo.order));
         vm.startPrank(maker);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x2, orderInfo.orderHash);
         orderInfo.orderSign = abi.encodePacked(r, s, v);
         vm.stopPrank();
 
-        // 尝试添加订单
+        // Attempt to add the order
         vm.startPrank(taker);
         vm.expectRevert("zero receive address");
         swap.addSwapRequest(orderInfo, true, false);
         vm.stopPrank();
     }
 
-    // 测试错误情况：取消请求时状态不是PENDING
+    // Test error case: cancel request when status is not PENDING
     function test_CancelSwapRequest_NotPending() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(maker);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash_123";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 前进时间
+        // Advance time
         vm.warp(block.timestamp + 3601);
 
-        // taker尝试取消已确认的请求
+        // Taker attempts to cancel a confirmed request
         vm.startPrank(taker);
         vm.expectRevert("swap request status is not pending");
         swap.cancelSwapRequest(orderInfo);
         vm.stopPrank();
     }
 
-    // 测试错误情况：取消请求时未超时
+    // Test error case: cancel request when not timed out
     function test_CancelSwapRequest_NotTimeout() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
 
-        // 尝试立即取消
+        // Attempt to cancel immediately
         vm.expectRevert("swap request not timeout");
         swap.cancelSwapRequest(orderInfo);
         vm.stopPrank();
     }
 
-    // 测试错误情况：强制取消请求时状态不正确
+    // Test error case: force cancel request when status is not correct
     function test_ForceCancelSwapRequest_InvalidStatus() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // maker拒绝请求
+        // Maker rejects the request
         vm.startPrank(maker);
         swap.makerRejectSwapRequest(orderInfo);
         vm.stopPrank();
 
-        // 前进时间
+        // Advance time
         vm.warp(block.timestamp + 7 hours);
 
-        // 管理员尝试强制取消已拒绝的请求
+        // Admin attempts to force cancel a rejected request
         vm.startPrank(owner);
         vm.expectRevert("swap request status is not pending or maker confirmed");
         swap.forceCancelSwapRequest(orderInfo);
         vm.stopPrank();
     }
 
-    // 测试错误情况：强制取消请求时未过期
+    // Test error case: force cancel request when not expired
     function test_ForceCancelSwapRequest_NotExpired() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // 管理员尝试立即强制取消
+        // Admin attempts to force cancel immediately
         vm.startPrank(owner);
         vm.expectRevert("swap request not expired");
         swap.forceCancelSwapRequest(orderInfo);
         vm.stopPrank();
     }
 
-    // 测试错误情况：回滚请求时状态不是MAKER_CONFIRMED
+    // Test error case: rollback request when status is not MAKER_CONFIRMED
     function test_RollbackSwapRequest_NotMakerConfirmed() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
 
-        // 尝试回滚未确认的请求
+        // Attempt to rollback an unconfirmed request
         vm.expectRevert("swap request status is not maker_confirmed");
         swap.rollbackSwapRequest(orderInfo);
         vm.stopPrank();
     }
 
-    // 测试错误情况：回滚合约转账的请求
+    // Test error case: rollback request for contract transfer
     function test_RollbackSwapRequest_OutByContract() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求，设置outByContract为true
+        // Add swap request with outByContract set to true
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, true);
         vm.stopPrank();
 
-        // 铸造代币给maker并授权
+        // Mint tokens to maker and approve
         vm.startPrank(address(WETH));
         WETH.mint(maker, 100 * 10 ** 18);
         vm.stopPrank();
@@ -1012,22 +1012,22 @@ contract SwapTest is Test {
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // taker尝试回滚合约转账的请求
+        // Taker attempts to rollback a request with contract transfer
         vm.startPrank(taker);
         vm.expectRevert("out by contract cannot rollback");
         swap.rollbackSwapRequest(orderInfo);
         vm.stopPrank();
     }
 
-    // 测试错误情况：确认请求时状态不是MAKER_CONFIRMED
+    // Test error case: confirm request when status is not MAKER_CONFIRMED
     function test_ConfirmSwapRequest_NotMakerConfirmed() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
 
-        // 尝试确认未经maker确认的请求
+        // Attempt to confirm an unconfirmed request
         bytes[] memory inTxHashs = new bytes[](1);
         inTxHashs[0] = "tx_hash_123";
         vm.expectRevert("status error");
@@ -1035,23 +1035,23 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 测试错误情况：确认请求时inTxHashs长度不匹配
+    // Test error case: confirm request with wrong inTxHashs length
     function test_ConfirmSwapRequest_WrongInTxHashsLength() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, false, false);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(maker);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash_123";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // taker尝试确认请求，但inTxHashs长度不匹配
+        // Taker attempts to confirm the request with mismatched inTxHashs length
         vm.startPrank(taker);
         bytes[] memory inTxHashs = new bytes[](2);
         inTxHashs[0] = "tx_hash_456";
@@ -1061,23 +1061,23 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 测试错误情况：确认请求时余额不足
+    // Test error case: confirm request with insufficient balance
     function test_ConfirmSwapRequest_InsufficientBalance() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, true, false);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(maker);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash_123";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // taker尝试确认请求但余额不足
+        // Taker attempts to confirm the request but has insufficient balance
         vm.startPrank(taker);
         WBTC.approve(address(swap), 100 * 10 ** 8);
         bytes[] memory inTxHashs = new bytes[](0);
@@ -1086,28 +1086,28 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 测试错误情况：确认请求时授权不足
+    // Test error case: confirm request with insufficient allowance
     function test_ConfirmSwapRequest_InsufficientAllowance() public {
         OrderInfo memory orderInfo = createOrderInfo();
 
-        // 添加交换请求
+        // Add swap request
         vm.startPrank(taker);
         swap.addSwapRequest(orderInfo, true, false);
         vm.stopPrank();
 
-        // maker确认请求
+        // Maker confirms the request
         vm.startPrank(maker);
         bytes[] memory outTxHashs = new bytes[](1);
         outTxHashs[0] = "tx_hash_123";
         swap.makerConfirmSwapRequest(orderInfo, outTxHashs);
         vm.stopPrank();
 
-        // 铸造代币给taker但不授权
+        // Mint tokens to taker but do not approve
         vm.startPrank(address(WBTC));
         WBTC.mint(taker, 100 * 10 ** 8);
         vm.stopPrank();
 
-        // taker尝试确认请求但授权不足
+        // Taker attempts to confirm the request but has insufficient allowance
         vm.startPrank(taker);
         bytes[] memory inTxHashs = new bytes[](0);
         vm.expectRevert("not enough allowance");
@@ -1115,9 +1115,9 @@ contract SwapTest is Test {
         vm.stopPrank();
     }
 
-    // 测试getWhiteListToken函数越界错误
+    // Test getWhiteListToken function out-of-range error
     function test_GetWhiteListToken_OutOfRange() public {
-        // 尝试获取不存在的白名单代币
+        // Attempt to get a non-existent whitelist token
         vm.expectRevert();
         swap.getWhiteListToken(100);
     }
