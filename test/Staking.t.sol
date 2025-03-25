@@ -222,7 +222,8 @@ contract StakingTest is Test {
             outAmount: stakeAmount * 10,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: hedger
+            receiver: hedger,
+            token: address(0)
         });
         vm.startPrank(hedger);
         vm.expectRevert();
@@ -256,7 +257,8 @@ contract StakingTest is Test {
             outAmount: stakeAmount,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: hedger
+            receiver: hedger,
+            token: address(0)
         });
         orderHash = keccak256(abi.encode(redeemOrder));
         (v, r, s) = vm.sign(orderSignerPk, orderHash);
@@ -290,7 +292,8 @@ contract StakingTest is Test {
             outAmount: stakeAmount * 10,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: hedger
+            receiver: hedger,
+            token: address(0)
         });
         vm.startPrank(owner);
         uSSI.grantRole(uSSI.PARTICIPANT_ROLE(), hedger);
@@ -322,7 +325,8 @@ contract StakingTest is Test {
             outAmount: stakeAmount,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: hedger
+            receiver: hedger,
+            token: address(0)
         });
         orderHash = keccak256(abi.encode(redeemOrder));
         (v, r, s) = vm.sign(orderSignerPk, orderHash);

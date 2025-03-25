@@ -13,7 +13,7 @@ import {Test, console} from "forge-std/Test.sol";
 
 error OwnableUnauthorizedAccount(address account);
 
-contract USITest is Test {
+contract USSITest is Test {
     MockToken WBTC;
     MockToken WETH;
 
@@ -121,7 +121,7 @@ contract USITest is Test {
         return asset;
     }
 
-    function test_Initialize() public {
+    function test_Initialize() public view {
         assertEq(ussi.owner(), owner);
         assertEq(ussi.orderSigner(), orderSigner);
         assertEq(ussi.factoryAddress(), address(factory));
@@ -178,7 +178,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         // Sign the order
@@ -213,7 +214,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: hedger
+            receiver: hedger,
+            token: address(0)
         });
         bytes32 orderHash = keccak256(abi.encode(mintOrder));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
@@ -247,7 +249,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(mintOrder));
@@ -289,7 +292,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(mintOrder));
@@ -329,7 +333,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         // Sign the order
@@ -367,7 +372,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: hedger
+            receiver: hedger,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(redeemOrder));
@@ -410,7 +416,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(redeemOrder));
@@ -451,7 +458,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(redeemOrder));
@@ -496,7 +504,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(redeemOrder));
@@ -574,7 +583,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(redeemOrder));
@@ -625,7 +635,8 @@ contract USITest is Test {
                 outAmount: USSI_AMOUNT,
                 deadline: block.timestamp + 600,
                 requester: hedger,
-                receiver: receiver
+                receiver: receiver,
+                token: address(0)
             });
 
             bytes32 orderHash_mint = keccak256(abi.encode(mintOrder));
@@ -664,7 +675,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(validMintOrder));
@@ -695,7 +707,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
         wrongAssetOrder.assetID = 999;
         orderHash = keccak256(abi.encode(wrongAssetOrder));
@@ -716,7 +729,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
         expiredOrder.deadline = block.timestamp - 1;
         orderHash = keccak256(abi.encode(expiredOrder));
@@ -787,7 +801,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(redeemOrder));
@@ -817,7 +832,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
         wrongRedeemTokenOrder.redeemToken = address(WETH);
         orderHash = keccak256(abi.encode(wrongRedeemTokenOrder));
@@ -839,7 +855,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(mintOrder));
@@ -890,7 +907,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(redeemOrder));
@@ -938,7 +956,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(mintOrder));
@@ -978,7 +997,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 redeemOrderHash = keccak256(abi.encode(redeemOrder));
@@ -1010,7 +1030,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(redeemOrder));
@@ -1050,7 +1071,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 mintOrderHash = keccak256(abi.encode(mintOrder));
@@ -1086,7 +1108,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(mintOrder));
@@ -1119,7 +1142,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 redeemOrderHash = keccak256(abi.encode(redeemOrder));
@@ -1148,7 +1172,8 @@ contract USITest is Test {
             outAmount: MINT_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 orderHash = keccak256(abi.encode(redeemOrder));
@@ -1181,7 +1206,8 @@ contract USITest is Test {
             outAmount: USSI_AMOUNT,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: receiver
+            receiver: receiver,
+            token: address(0)
         });
 
         bytes32 mintOrderHash = keccak256(abi.encode(mintOrder));
@@ -1194,5 +1220,312 @@ contract USITest is Test {
         vm.warp(block.timestamp - 1 hours);
         ussi.cancelRedeem(mintOrderHash);
         vm.stopPrank();
+    }
+
+    function test_GetSupportTokens() public {
+        vm.startPrank(owner);
+        
+        // Initially there should be no supported tokens
+        address[] memory initialTokens = ussi.getSupportTokens();
+        assertEq(initialTokens.length, 0);
+        
+        // Add a supported token
+        address newToken = address(new MockToken("Test Token", "TEST", 18));
+        ussi.addSupportToken(newToken);
+        
+        // Get the list of supported tokens
+        address[] memory tokens = ussi.getSupportTokens();
+        assertEq(tokens.length, 1);
+        assertEq(tokens[0], newToken);
+        
+        vm.stopPrank();
+    }
+
+    function test_AddSupportToken() public {
+        vm.startPrank(owner);
+        
+        // Test adding a valid token
+        address newToken = address(new MockToken("Test Token", "TEST", 18));
+        ussi.addSupportToken(newToken);
+        
+        // Verify the token was added
+        address[] memory tokens = ussi.getSupportTokens();
+        assertEq(tokens.length, 1);
+        assertEq(tokens[0], newToken);
+        
+        // Test adding zero address (should revert)
+        vm.expectRevert("token is zero address");
+        ussi.addSupportToken(address(0));
+        
+        // Test adding the same token again (should revert)
+        vm.expectRevert("already contains token");
+        ussi.addSupportToken(newToken);
+        
+        vm.stopPrank();
+        
+        // Test non-owner cannot add token
+        vm.startPrank(hedger);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, hedger));
+        ussi.addSupportToken(newToken);
+        vm.stopPrank();
+    }
+
+    function test_RemoveSupportToken() public {
+        vm.startPrank(owner);
+        
+        // Add a token first
+        address newToken = address(new MockToken("Test Token", "TEST", 18));
+        ussi.addSupportToken(newToken);
+        
+        // Test removing the token
+        ussi.removeSupportToken(newToken);
+        
+        // Verify the token was removed
+        address[] memory tokens = ussi.getSupportTokens();
+        assertEq(tokens.length, 0);
+        
+        // Test removing zero address (should revert)
+        vm.expectRevert("token is zero address");
+        ussi.removeSupportToken(address(0));
+        
+        // Test removing a non-existent token (should revert)
+        vm.expectRevert("token is not supported");
+        ussi.removeSupportToken(newToken);
+        
+        vm.stopPrank();
+        
+        // Test non-owner cannot remove token
+        vm.startPrank(hedger);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, hedger));
+        ussi.removeSupportToken(newToken);
+        vm.stopPrank();
+    }
+
+    function test_UpdateVault() public {
+        vm.startPrank(owner);
+        
+        // Test updating to a valid vault address
+        address newVault = address(0x123);
+        ussi.updateVault(newVault);
+        assertEq(ussi.vault(), newVault);
+        
+        // Test updating to zero address (should revert)
+        vm.expectRevert("vault is zero address");
+        ussi.updateVault(address(0));
+        
+        // Test updating to same address (should revert)
+        vm.expectRevert("vault not change");
+        ussi.updateVault(newVault);
+        
+        vm.stopPrank();
+        
+        // Test non-owner cannot update vault
+        vm.startPrank(hedger);
+        vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, hedger));
+        ussi.updateVault(address(0x456));
+        vm.stopPrank();
+    }
+
+    function test_ApplyMint_TokenMint() public {
+        vm.startPrank(owner);
+        // Add a supported token
+        address newToken = address(new MockToken("Test Token", "TEST", 18));
+        ussi.addSupportToken(newToken);
+        vm.stopPrank();
+
+        // Mint tokens to hedger
+        deal(address(newToken), hedger, MINT_AMOUNT);
+
+        // Create a token mint order
+        USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+            chain: "SETH",
+            orderType: USSI.HedgeOrderType.TOKEN_MINT,
+            assetID: 0, // Not used for TOKEN_MINT
+            redeemToken: address(0),
+            nonce: 0,
+            inAmount: MINT_AMOUNT,
+            outAmount: USSI_AMOUNT,
+            deadline: block.timestamp + 600,
+            requester: hedger,
+            receiver: receiver,
+            token: newToken
+        });
+
+        // Sign the order
+        bytes32 orderHash = keccak256(abi.encode(mintOrder));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
+        bytes memory orderSign = abi.encodePacked(r, s, v);
+
+        // Apply for minting
+        vm.startPrank(hedger);
+        IERC20(newToken).approve(address(ussi), MINT_AMOUNT);
+        ussi.applyMint(mintOrder, orderSign);
+        vm.stopPrank();
+
+        // Verify the application status
+        assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.PENDING));
+        assertEq(ussi.requestTimestamps(orderHash), block.timestamp);
+
+        // Verify the token has been transferred
+        assertEq(IERC20(newToken).balanceOf(hedger), 0);
+        assertEq(IERC20(newToken).balanceOf(address(ussi)), MINT_AMOUNT);
+    }
+
+    function test_CancelMint_TokenMint() public {
+        vm.startPrank(owner);
+        // Add a supported token
+        address newToken = address(new MockToken("Test Token", "TEST", 18));
+        ussi.addSupportToken(newToken);
+        vm.stopPrank();
+
+        // Mint tokens to hedger
+        deal(address(newToken), hedger, MINT_AMOUNT);
+
+        // Create a token mint order
+        USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+            chain: "SETH",
+            orderType: USSI.HedgeOrderType.TOKEN_MINT,
+            assetID: 0, // Not used for TOKEN_MINT
+            redeemToken: address(0),
+            nonce: 0,
+            inAmount: MINT_AMOUNT,
+            outAmount: USSI_AMOUNT,
+            deadline: block.timestamp + 600,
+            requester: hedger,
+            receiver: receiver,
+            token: newToken
+        });
+
+        bytes32 orderHash = keccak256(abi.encode(mintOrder));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
+        bytes memory orderSign = abi.encodePacked(r, s, v);
+
+        vm.startPrank(hedger);
+        IERC20(newToken).approve(address(ussi), MINT_AMOUNT);
+        ussi.applyMint(mintOrder, orderSign);
+
+        // Attempt to cancel but not yet timed out
+        vm.expectRevert("not timeout");
+        ussi.cancelMint(orderHash);
+
+        // Wait for timeout
+        vm.warp(block.timestamp + ussi.MAX_MINT_DELAY() + 1);
+
+        // Cancel minting
+        ussi.cancelMint(orderHash);
+        vm.stopPrank();
+
+        // Verify the cancellation status
+        assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CANCELED));
+
+        // Verify the token has been returned
+        assertEq(IERC20(newToken).balanceOf(hedger), MINT_AMOUNT);
+        assertEq(IERC20(newToken).balanceOf(address(ussi)), 0);
+    }
+
+    function test_RejectMint_TokenMint() public {
+        vm.startPrank(owner);
+        // Add a supported token
+        address newToken = address(new MockToken("Test Token", "TEST", 18));
+        ussi.addSupportToken(newToken);
+        vm.stopPrank();
+
+        // Mint tokens to hedger
+        deal(address(newToken), hedger, MINT_AMOUNT);
+
+        // Create a token mint order
+        USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+            chain: "SETH",
+            orderType: USSI.HedgeOrderType.TOKEN_MINT,
+            assetID: 0, // Not used for TOKEN_MINT
+            redeemToken: address(0),
+            nonce: 0,
+            inAmount: MINT_AMOUNT,
+            outAmount: USSI_AMOUNT,
+            deadline: block.timestamp + 600,
+            requester: hedger,
+            receiver: receiver,
+            token: newToken
+        });
+
+        bytes32 orderHash = keccak256(abi.encode(mintOrder));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
+        bytes memory orderSign = abi.encodePacked(r, s, v);
+
+        vm.startPrank(hedger);
+        IERC20(newToken).approve(address(ussi), MINT_AMOUNT);
+        ussi.applyMint(mintOrder, orderSign);
+        vm.stopPrank();
+
+        // Reject minting
+        vm.startPrank(owner);
+        ussi.rejectMint(orderHash);
+        vm.stopPrank();
+
+        // Verify the rejection status
+        assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.REJECTED));
+
+        // Verify the token has been returned
+        assertEq(IERC20(newToken).balanceOf(hedger), MINT_AMOUNT);
+        assertEq(IERC20(newToken).balanceOf(address(ussi)), 0);
+    }
+
+    function test_ConfirmMint_TokenMint() public {
+        vm.startPrank(owner);
+        // Add a supported token
+        address newToken = address(new MockToken("Test Token", "TEST", 18));
+        ussi.addSupportToken(newToken);
+        
+        // Set up vault address
+        address newVault = address(0x123);
+        vm.stopPrank();
+
+        // Mint tokens to hedger
+        deal(address(newToken), hedger, MINT_AMOUNT);
+
+        // Create a token mint order
+        USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+            chain: "SETH",
+            orderType: USSI.HedgeOrderType.TOKEN_MINT,
+            assetID: 0, // Not used for TOKEN_MINT
+            redeemToken: address(0),
+            nonce: 0,
+            inAmount: MINT_AMOUNT,
+            outAmount: USSI_AMOUNT,
+            deadline: block.timestamp + 600,
+            requester: hedger,
+            receiver: receiver,
+            token: newToken
+        });
+
+        bytes32 orderHash = keccak256(abi.encode(mintOrder));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
+        bytes memory orderSign = abi.encodePacked(r, s, v);
+
+        vm.startPrank(hedger);
+        IERC20(newToken).approve(address(ussi), MINT_AMOUNT);
+        ussi.applyMint(mintOrder, orderSign);
+        vm.stopPrank();
+
+        // Test confirming with zero vault address
+        vm.startPrank(owner);
+        vm.expectRevert("vault is zero address");
+        ussi.confirmMint(orderHash);
+        
+        // Set vault back to valid address
+        ussi.updateVault(newVault);
+        // Confirm minting
+        ussi.confirmMint(orderHash);
+        vm.stopPrank();
+
+        // Verify the confirmation status
+        assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CONFIRMED));
+
+        // Verify USSI tokens have been minted
+        assertEq(ussi.balanceOf(hedger), USSI_AMOUNT);
+        
+        // Verify tokens have been transferred to vault
+        assertEq(IERC20(newToken).balanceOf(newVault), MINT_AMOUNT);
+        assertEq(IERC20(newToken).balanceOf(address(ussi)), 0);
     }
 }

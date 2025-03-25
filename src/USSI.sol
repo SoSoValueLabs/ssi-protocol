@@ -19,9 +19,10 @@ import "forge-std/console.sol";
 contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ERC20Upgradeable, UUPSUpgradeable, PausableUpgradeable {
     using EnumerableSet for EnumerableSet.Bytes32Set;
     using EnumerableSet for EnumerableSet.UintSet;
+    using EnumerableSet for EnumerableSet.AddressSet;
     using SafeERC20 for IERC20;
 
-    enum HedgeOrderType { NONE, MINT, REDEEM }
+    enum HedgeOrderType { NONE, MINT, REDEEM, TOKEN_MINT }
     enum HedgeOrderStatus { NONE, PENDING, REJECTED, CONFIRMED, CANCELED }
 
     struct HedgeOrder {
@@ -35,6 +36,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         uint256 deadline;
         address requester;
         address receiver;
+        address token;
     }
 
     EnumerableSet.Bytes32Set orderHashs;
@@ -57,8 +59,13 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
     uint256 public constant MAX_MINT_DELAY = 1 days;
     uint256 public constant MAX_REDEEM_DELAY = 7 days;
 
+    EnumerableSet.AddressSet supportTokens;
+    address public vault;
+
     event AddAssetID(uint256 assetID);
     event RemoveAssetID(uint256 assetID);
+    event AddToken(address token);
+    event RemoveToken(address token);
     event UpdateOrderSigner(address oldOrderSigner, address orderSigner);
     event UpdateRedeemToken(address oldRedeemToken, address redeemToken);
     event ApplyMint(HedgeOrder hedgeOrder);
@@ -69,7 +76,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
     event ConfirmRedeem(bytes32 orderHash);
     event CancelMint(bytes32 orderHash);
     event CancelRedeem(bytes32 orderHash);
-
+    event UpdateVault(address oldVault, address vault);
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -126,6 +133,35 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         emit RemoveAssetID(assetID);
     }
 
+    function getSupportTokens() external view returns (address[] memory tokens) {
+        tokens = new address[](supportTokens.length());
+        for (uint i = 0; i < tokens.length; i++) {
+            tokens[i] = supportTokens.at(i);
+        }
+    }
+
+    function addSupportToken(address token) external onlyOwner {
+        require(token != address(0), "token is zero address");
+        require(!supportTokens.contains(token), "already contains token");
+        supportTokens.add(token);
+        emit AddToken(token);
+    }
+
+    function removeSupportToken(address token) external onlyOwner {
+        require(token != address(0), "token is zero address");
+        require(supportTokens.contains(token), "token is not supported");
+        supportTokens.remove(token);
+        emit RemoveToken(token);
+    }
+
+    function updateVault(address vault_) external onlyOwner {
+        address oldVault = vault;
+        require(vault_ != address(0), "vault is zero address");
+        require(vault_ != vault, "vault not change");
+        vault = vault_;
+        emit UpdateVault(oldVault, vault);
+    }
+
     function updateOrderSigner(address orderSigner_) external onlyOwner {
         address oldOrderSigner = orderSigner;
         require(orderSigner_ != address(0), "orderSigner is zero address");
@@ -144,12 +180,17 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
 
     function checkHedgeOrder(HedgeOrder calldata hedgeOrder, bytes32 orderHash, bytes calldata orderSignature) public view {
         require(keccak256(abi.encode(chain)) == keccak256(abi.encode(hedgeOrder.chain)), "chain not match");
+        require(hedgeOrder.orderType != HedgeOrderType.NONE, "order type is none");
         if (hedgeOrder.orderType == HedgeOrderType.MINT) {
             require(supportAssetIDs.contains(hedgeOrder.assetID), "assetID not supported");
         }
         if (hedgeOrder.orderType == HedgeOrderType.REDEEM) {
             require(hedgeOrder.receiver != address(0), "receiver is zero address");
             require(redeemToken == hedgeOrder.redeemToken, "redeem token not supported");
+        }
+        if (hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT) {
+            require(hedgeOrder.token != address(0), "token is zero address");
+            require(supportTokens.contains(hedgeOrder.token), "token not supported");
         }
         require(block.timestamp <= hedgeOrder.deadline, "expired");
         require(!orderHashs.contains(orderHash), "order already exists");
@@ -168,6 +209,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         hedgeOrder_.deadline = hedgeOrder.deadline;
         hedgeOrder_.requester = hedgeOrder.requester;
         hedgeOrder_.receiver = hedgeOrder.receiver;
+        hedgeOrder_.token = hedgeOrder.token;
         orderHashs.add(orderHash);
     }
 
@@ -175,16 +217,22 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         require(hedgeOrder.requester == msg.sender, "msg sender is not requester");
         bytes32 orderHash = keccak256(abi.encode(hedgeOrder));
         checkHedgeOrder(hedgeOrder, orderHash, orderSignature);
-        require(hedgeOrder.orderType == HedgeOrderType.MINT, "order type not match");
-        // cannot hedge when underlying is changing
-        IAssetToken assetToken = IAssetToken(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
-        require(!assetToken.rebalancing(), "asset token is rebalancing");
-        require(assetToken.feeCollected(), "asset token has fee not collected");
+        require(hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT, "order type not match");
+        IERC20 token;
+        if (hedgeOrder.orderType == HedgeOrderType.MINT) {
+            // cannot hedge when underlying is changing
+            IAssetToken assetToken = IAssetToken(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
+            require(!assetToken.rebalancing(), "asset token is rebalancing");
+            require(assetToken.feeCollected(), "asset token has fee not collected");
+            token = IERC20(address(assetToken));
+        } else {
+            token = IERC20(hedgeOrder.token);
+        }
         setHedgeOrder(orderHash, hedgeOrder);
         orderStatus[orderHash] = HedgeOrderStatus.PENDING;
         requestTimestamps[orderHash] = block.timestamp;
-        require(IERC20(assetToken).allowance(hedgeOrder.requester, address(this)) >= hedgeOrder.inAmount, "not enough allowance");
-        IERC20(assetToken).safeTransferFrom(hedgeOrder.requester, address(this), hedgeOrder.inAmount);
+        require(token.allowance(hedgeOrder.requester, address(this)) >= hedgeOrder.inAmount, "not enough allowance");
+        token.safeTransferFrom(hedgeOrder.requester, address(this), hedgeOrder.inAmount);
         emit ApplyMint(hedgeOrder);
     }
 
@@ -194,10 +242,15 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         require(requestTimestamps[orderHash] + MAX_MINT_DELAY <= block.timestamp, "not timeout");
         HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
         require(msg.sender == hedgeOrder.requester, "not requester");
-        require(hedgeOrder.orderType == HedgeOrderType.MINT, "order type not match");
+        require(hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT, "order type not match");
         orderStatus[orderHash] = HedgeOrderStatus.CANCELED;
-        IERC20 assetToken = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
-        assetToken.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
+        IERC20 token;
+        if (hedgeOrder.orderType == HedgeOrderType.MINT) {
+            token = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
+        } else {
+            token = IERC20(hedgeOrder.token);
+        }
+        token.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
         emit CancelMint(orderHash);
     }
 
@@ -205,10 +258,15 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         require(orderHashs.contains(orderHash), "order not exists");
         require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
         HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
-        require(hedgeOrder.orderType == HedgeOrderType.MINT, "order type not match");
+        require(hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT, "order type not match");
         orderStatus[orderHash] = HedgeOrderStatus.REJECTED;
-        IERC20 assetToken = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
-        assetToken.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
+        IERC20 token;
+        if (hedgeOrder.orderType == HedgeOrderType.MINT) {
+            token = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
+        } else {
+            token = IERC20(hedgeOrder.token);
+        }
+        token.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
         emit RejectMint(orderHash);
     }
 
@@ -216,15 +274,20 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         require(orderHashs.contains(orderHash), "order not exists");
         require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
         HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
-        require(hedgeOrder.orderType == HedgeOrderType.MINT, "order type not match");
+        require(hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT, "order type not match");
         _mint(hedgeOrder.requester, hedgeOrder.outAmount);
         orderStatus[orderHash] = HedgeOrderStatus.CONFIRMED;
-        IERC20 assetToken = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
-        IAssetIssuer issuer = IAssetIssuer(IAssetFactory(factoryAddress).issuers(hedgeOrder.assetID));
-        if (assetToken.allowance(address(this), address(issuer)) < hedgeOrder.inAmount) {
-            assetToken.forceApprove(address(issuer), hedgeOrder.inAmount);
+        if (hedgeOrder.orderType == HedgeOrderType.MINT) {
+            IERC20 assetToken = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
+            IAssetIssuer issuer = IAssetIssuer(IAssetFactory(factoryAddress).issuers(hedgeOrder.assetID));
+            if (assetToken.allowance(address(this), address(issuer)) < hedgeOrder.inAmount) {
+                assetToken.forceApprove(address(issuer), hedgeOrder.inAmount);
+            }
+            issuer.burnFor(hedgeOrder.assetID, hedgeOrder.inAmount);
+        } else {
+            require(vault != address(0), "vault is zero address");
+            IERC20(hedgeOrder.token).safeTransfer(vault, hedgeOrder.inAmount);
         }
-        issuer.burnFor(hedgeOrder.assetID, hedgeOrder.inAmount);
         emit ConfirmMint(orderHash);
     }
 
