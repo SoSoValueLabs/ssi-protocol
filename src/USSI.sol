@@ -14,7 +14,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
-import "forge-std/console.sol";
+// import "forge-std/console.sol";
 
 contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ERC20Upgradeable, UUPSUpgradeable, PausableUpgradeable {
     using EnumerableSet for EnumerableSet.Bytes32Set;
@@ -37,6 +37,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         address requester;
         address receiver;
         address token;
+        address vault;
     }
 
     EnumerableSet.Bytes32Set orderHashs;
@@ -61,6 +62,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
 
     EnumerableSet.AddressSet supportTokens;
     address public vault;
+    mapping(address => address) public vaultRoutes;
+    EnumerableSet.AddressSet routeRequesters;
 
     event AddAssetID(uint256 assetID);
     event RemoveAssetID(uint256 assetID);
@@ -77,6 +80,9 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
     event CancelMint(bytes32 orderHash);
     event CancelRedeem(bytes32 orderHash);
     event UpdateVault(address oldVault, address vault);
+    event AddVaultRoute(address requester, address vault);
+    event RemoveVaultRoute(address requester);
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -162,6 +168,38 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         emit UpdateVault(oldVault, vault);
     }
 
+    function getVaultRoute(address requester) public view returns (address) {
+        if (vaultRoutes[requester] == address(0)) {
+            return vault;
+        }
+        return vaultRoutes[requester];
+    }
+
+    function addVaultRoute(address requester, address vault_) external onlyOwner {
+        require(vault_ != address(0), "vault is zero address");
+        require(vaultRoutes[requester] != vault_, "vault route not change");
+        vaultRoutes[requester] = vault_;
+        routeRequesters.add(requester);
+        emit AddVaultRoute(requester, vault_);
+    }
+
+    function removeVaultRoute(address requester) external onlyOwner {
+        require(vaultRoutes[requester] != address(0), "vault route not exists");
+        delete vaultRoutes[requester];
+        routeRequesters.remove(requester);
+        emit RemoveVaultRoute(requester);
+    }
+
+    // @dev only for off-chain use
+    function getVaultRoutes() external view returns (address[] memory requesters, address[] memory vaults) {
+        requesters = new address[](routeRequesters.length());
+        vaults = new address[](routeRequesters.length());
+        for (uint i = 0; i < routeRequesters.length(); i++) {
+            requesters[i] = routeRequesters.at(i);
+            vaults[i] = vaultRoutes[routeRequesters.at(i)];
+        }
+    }
+
     function updateOrderSigner(address orderSigner_) external onlyOwner {
         address oldOrderSigner = orderSigner;
         require(orderSigner_ != address(0), "orderSigner is zero address");
@@ -210,6 +248,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         hedgeOrder_.requester = hedgeOrder.requester;
         hedgeOrder_.receiver = hedgeOrder.receiver;
         hedgeOrder_.token = hedgeOrder.token;
+        hedgeOrder_.vault = hedgeOrder.vault;
         orderHashs.add(orderHash);
     }
 
@@ -227,6 +266,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
             token = IERC20(address(assetToken));
         } else {
             token = IERC20(hedgeOrder.token);
+            require(hedgeOrder.vault != address(0), "vault is zero address");
+            require(getVaultRoute(hedgeOrder.requester) == hedgeOrder.vault, "vault not match");
         }
         setHedgeOrder(orderHash, hedgeOrder);
         orderStatus[orderHash] = HedgeOrderStatus.PENDING;
@@ -285,8 +326,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
             }
             issuer.burnFor(hedgeOrder.assetID, hedgeOrder.inAmount);
         } else {
-            require(vault != address(0), "vault is zero address");
-            IERC20(hedgeOrder.token).safeTransfer(vault, hedgeOrder.inAmount);
+            require(hedgeOrder.vault != address(0), "vault is zero address");
+            IERC20(hedgeOrder.token).safeTransfer(hedgeOrder.vault, hedgeOrder.inAmount);
         }
         emit ConfirmMint(orderHash);
     }
