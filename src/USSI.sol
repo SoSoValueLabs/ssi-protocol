@@ -64,6 +64,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
     address public vault;
     mapping(address => address) public vaultRoutes;
     EnumerableSet.AddressSet routeRequesters;
+    mapping(address => uint256) public mintPendingAmounts;
+    mapping(address => uint256) public redeemPendingAmounts;
 
     event AddAssetID(uint256 assetID);
     event RemoveAssetID(uint256 assetID);
@@ -272,6 +274,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         setHedgeOrder(orderHash, hedgeOrder);
         orderStatus[orderHash] = HedgeOrderStatus.PENDING;
         requestTimestamps[orderHash] = block.timestamp;
+        mintPendingAmounts[address(token)] += hedgeOrder.inAmount;
         require(token.allowance(hedgeOrder.requester, address(this)) >= hedgeOrder.inAmount, "not enough allowance");
         token.safeTransferFrom(hedgeOrder.requester, address(this), hedgeOrder.inAmount);
         emit ApplyMint(hedgeOrder);
@@ -291,6 +294,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         } else {
             token = IERC20(hedgeOrder.token);
         }
+        mintPendingAmounts[address(token)] -= hedgeOrder.inAmount;
         token.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
         emit CancelMint(orderHash);
     }
@@ -307,6 +311,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         } else {
             token = IERC20(hedgeOrder.token);
         }
+        mintPendingAmounts[address(token)] -= hedgeOrder.inAmount;
         token.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
         emit RejectMint(orderHash);
     }
@@ -325,9 +330,11 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
                 assetToken.forceApprove(address(issuer), hedgeOrder.inAmount);
             }
             issuer.burnFor(hedgeOrder.assetID, hedgeOrder.inAmount);
+            mintPendingAmounts[address(assetToken)] -= hedgeOrder.inAmount;
         } else {
             require(hedgeOrder.vault != address(0), "vault is zero address");
             IERC20(hedgeOrder.token).safeTransfer(hedgeOrder.vault, hedgeOrder.inAmount);
+            mintPendingAmounts[hedgeOrder.token] -= hedgeOrder.inAmount;
         }
         emit ConfirmMint(orderHash);
     }
@@ -341,6 +348,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         setHedgeOrder(orderHash, hedgeOrder);
         orderStatus[orderHash] = HedgeOrderStatus.PENDING;
         requestTimestamps[orderHash] = block.timestamp;
+        redeemPendingAmounts[address(this)] += hedgeOrder.inAmount;
+        redeemPendingAmounts[hedgeOrder.redeemToken] += hedgeOrder.outAmount;
         IERC20(address(this)).safeTransferFrom(hedgeOrder.requester, address(this), hedgeOrder.inAmount);
         emit ApplyRedeem(hedgeOrder);
     }
@@ -353,6 +362,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         require(msg.sender == hedgeOrder.requester, "not requester");
         require(hedgeOrder.orderType == HedgeOrderType.REDEEM, "order type not match");
         orderStatus[orderHash] = HedgeOrderStatus.CANCELED;
+        redeemPendingAmounts[address(this)] -= hedgeOrder.inAmount;
+        redeemPendingAmounts[hedgeOrder.redeemToken] -= hedgeOrder.outAmount;
         IERC20(address(this)).safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
         emit CancelRedeem(orderHash);
     }
@@ -363,6 +374,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
         require(hedgeOrder.orderType == HedgeOrderType.REDEEM, "order type not match");
         orderStatus[orderHash] = HedgeOrderStatus.REJECTED;
+        redeemPendingAmounts[address(this)] -= hedgeOrder.inAmount;
+        redeemPendingAmounts[hedgeOrder.redeemToken] -= hedgeOrder.outAmount;
         IERC20(address(this)).safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
         emit RejectRedeem(orderHash);
     }
@@ -379,8 +392,19 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         } else {
             redeemTxHashs[orderHash] = txHash;
         }
+        redeemPendingAmounts[address(this)] -= hedgeOrder.inAmount;
+        redeemPendingAmounts[hedgeOrder.redeemToken] -= hedgeOrder.outAmount;
         _burn(address(this), hedgeOrder.inAmount);
         emit ConfirmRedeem(orderHash);
+    }
+
+    function rescueToken(address token) external onlyOwner {
+        require(token != address(0), "token is zero address");
+        require(vault != address(0), "vault is zero address");
+        uint256 rescueAmount = IERC20(token).balanceOf(address(this));
+        require(rescueAmount > mintPendingAmounts[token] + redeemPendingAmounts[token], "nothing to rescue");
+        rescueAmount -= mintPendingAmounts[token] + redeemPendingAmounts[token];
+        IERC20(token).safeTransfer(vault, rescueAmount);
     }
 
     function getOrderHashs() external view returns (bytes32[] memory orderHashs_) {

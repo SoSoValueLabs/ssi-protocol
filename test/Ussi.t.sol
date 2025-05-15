@@ -1617,4 +1617,98 @@ contract USSITest is Test {
         assertEq(ussi.getVaultRoute(vm.addr(0x123)), vm.addr(0x789));
         assertEq(ussi.getVaultRoute(vm.addr(0x999)), vm.addr(0x456));
     }
+
+    function test_rescueToken() public {
+        vm.startPrank(owner);
+        ussi.addSupportToken(address(WBTC));
+        ussi.updateVault(vm.addr(0x456));
+        ussi.addVaultRoute(hedger, vm.addr(0x789));
+        vm.stopPrank();
+
+        // Create a token mint order
+        USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+            chain: "SETH",
+            orderType: USSI.HedgeOrderType.TOKEN_MINT,
+            assetID: 0, // Not used for TOKEN_MINT
+            redeemToken: address(0),
+            nonce: 0,
+            inAmount: MINT_AMOUNT,
+            outAmount: USSI_AMOUNT,
+            deadline: block.timestamp + 600,
+            requester: hedger,
+            receiver: receiver,
+            token: address(WBTC),
+            vault: ussi.getVaultRoute(hedger)
+        });
+
+        bytes32 mintOrderHash = keccak256(abi.encode(mintOrder));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, mintOrderHash);
+        bytes memory mintOrderSign = abi.encodePacked(r, s, v);
+
+        vm.startPrank(hedger);
+        deal(address(WBTC), hedger, MINT_AMOUNT);
+        IERC20(WBTC).approve(address(ussi), MINT_AMOUNT);
+        ussi.applyMint(mintOrder, mintOrderSign);
+        vm.stopPrank();
+        assertEq(IERC20(WBTC).balanceOf(address(ussi)), MINT_AMOUNT);
+        assertEq(ussi.mintPendingAmounts(address(WBTC)), MINT_AMOUNT);
+
+        // create a redeem order
+        deal(address(ussi), hedger, USSI_AMOUNT);
+        USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
+            chain: "SETH",
+            orderType: USSI.HedgeOrderType.REDEEM,
+            assetID: ASSET_ID1,
+            redeemToken: address(WBTC),
+            nonce: 1,
+            inAmount: USSI_AMOUNT,
+            outAmount: MINT_AMOUNT,
+            deadline: block.timestamp + 600,
+            requester: hedger,
+            receiver: receiver,
+            token: address(0),
+            vault: address(0)
+        });
+
+        bytes32 redeemOrderHash = keccak256(abi.encode(redeemOrder));
+        (v, r, s) = vm.sign(orderSignerPk, redeemOrderHash);
+        bytes memory redeemOrderSign = abi.encodePacked(r, s, v);
+
+        vm.startPrank(hedger);
+        IERC20(address(ussi)).approve(address(ussi), USSI_AMOUNT);
+        ussi.applyRedeem(redeemOrder, redeemOrderSign);
+        vm.stopPrank();
+        assertEq(ussi.redeemPendingAmounts(address(WBTC)), MINT_AMOUNT);
+        assertEq(ussi.redeemPendingAmounts(address(ussi)), USSI_AMOUNT);
+
+        vm.startPrank(owner);
+        // transfer WBTC to ussi
+        deal(address(WBTC), address(ussi), MINT_AMOUNT * 2);
+        vm.expectRevert("nothing to rescue");
+        ussi.rescueToken(address(ussi));
+        vm.expectRevert("nothing to rescue");
+        ussi.rescueToken(address(WBTC));
+        // over-transfer WBTC to ussi
+        deal(address(WBTC), address(ussi), MINT_AMOUNT * 3);
+        ussi.rescueToken(address(WBTC));
+        assertEq(IERC20(WBTC).balanceOf(address(ussi.vault())), MINT_AMOUNT);
+        vm.expectRevert("nothing to rescue");
+        ussi.rescueToken(address(WBTC));
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+        ussi.confirmMint(mintOrderHash);
+        assertEq(ussi.mintPendingAmounts(address(WBTC)), 0);
+        assertEq(ussi.mintPendingAmounts(address(ussi)), 0);
+        assertEq(IERC20(WBTC).balanceOf(ussi.getVaultRoute(hedger)), MINT_AMOUNT);
+        vm.stopPrank();
+
+        vm.startPrank(owner);
+        ussi.confirmRedeem(redeemOrderHash, bytes32(0));
+        assertEq(ussi.redeemPendingAmounts(address(WBTC)), 0);
+        assertEq(ussi.redeemPendingAmounts(address(ussi)), 0);
+        assertEq(IERC20(WBTC).balanceOf(address(ussi)), 0);
+        assertEq(IERC20(WBTC).balanceOf(hedger), MINT_AMOUNT);
+        vm.stopPrank();
+    }
 }
