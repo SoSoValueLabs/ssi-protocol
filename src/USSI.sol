@@ -84,6 +84,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
     event UpdateVault(address oldVault, address vault);
     event AddVaultRoute(address requester, address vault);
     event RemoveVaultRoute(address requester);
+    event RescueToken(address token, uint256 amount);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -405,6 +406,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         require(rescueAmount > mintPendingAmounts[token] + redeemPendingAmounts[token], "nothing to rescue");
         rescueAmount -= mintPendingAmounts[token] + redeemPendingAmounts[token];
         IERC20(token).safeTransfer(vault, rescueAmount);
+        emit RescueToken(token, rescueAmount);
     }
 
     function getOrderHashs() external view returns (bytes32[] memory orderHashs_) {
