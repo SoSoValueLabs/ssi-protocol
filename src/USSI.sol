@@ -326,7 +326,6 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
             }
             issuer.burnFor(hedgeOrder.assetID, hedgeOrder.inAmount);
         } else {
-            require(hedgeOrder.vault != address(0), "vault is zero address");
             IERC20(hedgeOrder.token).safeTransfer(hedgeOrder.vault, hedgeOrder.inAmount);
         }
         emit ConfirmMint(orderHash);
