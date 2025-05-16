@@ -14,7 +14,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
-import "forge-std/console.sol";
+// import "forge-std/console.sol";
 
 contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ERC20Upgradeable, UUPSUpgradeable, PausableUpgradeable {
     using EnumerableSet for EnumerableSet.Bytes32Set;
@@ -37,6 +37,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         address requester;
         address receiver;
         address token;
+        address vault;
     }
 
     EnumerableSet.Bytes32Set orderHashs;
@@ -61,6 +62,10 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
 
     EnumerableSet.AddressSet supportTokens;
     address public vault;
+    mapping(address => address) public vaultRoutes;
+    EnumerableSet.AddressSet routeRequesters;
+    mapping(address => uint256) public mintPendingAmounts;
+    mapping(address => uint256) public redeemPendingAmounts;
 
     event AddAssetID(uint256 assetID);
     event RemoveAssetID(uint256 assetID);
@@ -77,6 +82,10 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
     event CancelMint(bytes32 orderHash);
     event CancelRedeem(bytes32 orderHash);
     event UpdateVault(address oldVault, address vault);
+    event AddVaultRoute(address requester, address vault);
+    event RemoveVaultRoute(address requester);
+    event RescueToken(address token, uint256 amount);
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -162,6 +171,38 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         emit UpdateVault(oldVault, vault);
     }
 
+    function getVaultRoute(address requester) public view returns (address) {
+        if (vaultRoutes[requester] == address(0)) {
+            return vault;
+        }
+        return vaultRoutes[requester];
+    }
+
+    function addVaultRoute(address requester, address vault_) external onlyOwner {
+        require(vault_ != address(0), "vault is zero address");
+        require(vaultRoutes[requester] != vault_, "vault route not change");
+        vaultRoutes[requester] = vault_;
+        routeRequesters.add(requester);
+        emit AddVaultRoute(requester, vault_);
+    }
+
+    function removeVaultRoute(address requester) external onlyOwner {
+        require(vaultRoutes[requester] != address(0), "vault route not exists");
+        delete vaultRoutes[requester];
+        routeRequesters.remove(requester);
+        emit RemoveVaultRoute(requester);
+    }
+
+    // @dev only for off-chain use
+    function getVaultRoutes() external view returns (address[] memory requesters, address[] memory vaults) {
+        requesters = new address[](routeRequesters.length());
+        vaults = new address[](routeRequesters.length());
+        for (uint i = 0; i < routeRequesters.length(); i++) {
+            requesters[i] = routeRequesters.at(i);
+            vaults[i] = vaultRoutes[routeRequesters.at(i)];
+        }
+    }
+
     function updateOrderSigner(address orderSigner_) external onlyOwner {
         address oldOrderSigner = orderSigner;
         require(orderSigner_ != address(0), "orderSigner is zero address");
@@ -210,6 +251,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         hedgeOrder_.requester = hedgeOrder.requester;
         hedgeOrder_.receiver = hedgeOrder.receiver;
         hedgeOrder_.token = hedgeOrder.token;
+        hedgeOrder_.vault = hedgeOrder.vault;
         orderHashs.add(orderHash);
     }
 
@@ -227,10 +269,13 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
             token = IERC20(address(assetToken));
         } else {
             token = IERC20(hedgeOrder.token);
+            require(hedgeOrder.vault != address(0), "vault is zero address");
+            require(getVaultRoute(hedgeOrder.requester) == hedgeOrder.vault, "vault not match");
         }
         setHedgeOrder(orderHash, hedgeOrder);
         orderStatus[orderHash] = HedgeOrderStatus.PENDING;
         requestTimestamps[orderHash] = block.timestamp;
+        mintPendingAmounts[address(token)] += hedgeOrder.inAmount;
         require(token.allowance(hedgeOrder.requester, address(this)) >= hedgeOrder.inAmount, "not enough allowance");
         token.safeTransferFrom(hedgeOrder.requester, address(this), hedgeOrder.inAmount);
         emit ApplyMint(hedgeOrder);
@@ -250,6 +295,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         } else {
             token = IERC20(hedgeOrder.token);
         }
+        mintPendingAmounts[address(token)] -= hedgeOrder.inAmount;
         token.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
         emit CancelMint(orderHash);
     }
@@ -266,6 +312,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         } else {
             token = IERC20(hedgeOrder.token);
         }
+        mintPendingAmounts[address(token)] -= hedgeOrder.inAmount;
         token.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
         emit RejectMint(orderHash);
     }
@@ -284,9 +331,10 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
                 assetToken.forceApprove(address(issuer), hedgeOrder.inAmount);
             }
             issuer.burnFor(hedgeOrder.assetID, hedgeOrder.inAmount);
+            mintPendingAmounts[address(assetToken)] -= hedgeOrder.inAmount;
         } else {
-            require(vault != address(0), "vault is zero address");
-            IERC20(hedgeOrder.token).safeTransfer(vault, hedgeOrder.inAmount);
+            IERC20(hedgeOrder.token).safeTransfer(hedgeOrder.vault, hedgeOrder.inAmount);
+            mintPendingAmounts[hedgeOrder.token] -= hedgeOrder.inAmount;
         }
         emit ConfirmMint(orderHash);
     }
@@ -300,6 +348,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         setHedgeOrder(orderHash, hedgeOrder);
         orderStatus[orderHash] = HedgeOrderStatus.PENDING;
         requestTimestamps[orderHash] = block.timestamp;
+        redeemPendingAmounts[address(this)] += hedgeOrder.inAmount;
+        redeemPendingAmounts[hedgeOrder.redeemToken] += hedgeOrder.outAmount;
         IERC20(address(this)).safeTransferFrom(hedgeOrder.requester, address(this), hedgeOrder.inAmount);
         emit ApplyRedeem(hedgeOrder);
     }
@@ -312,6 +362,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         require(msg.sender == hedgeOrder.requester, "not requester");
         require(hedgeOrder.orderType == HedgeOrderType.REDEEM, "order type not match");
         orderStatus[orderHash] = HedgeOrderStatus.CANCELED;
+        redeemPendingAmounts[address(this)] -= hedgeOrder.inAmount;
+        redeemPendingAmounts[hedgeOrder.redeemToken] -= hedgeOrder.outAmount;
         IERC20(address(this)).safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
         emit CancelRedeem(orderHash);
     }
@@ -322,6 +374,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
         require(hedgeOrder.orderType == HedgeOrderType.REDEEM, "order type not match");
         orderStatus[orderHash] = HedgeOrderStatus.REJECTED;
+        redeemPendingAmounts[address(this)] -= hedgeOrder.inAmount;
+        redeemPendingAmounts[hedgeOrder.redeemToken] -= hedgeOrder.outAmount;
         IERC20(address(this)).safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
         emit RejectRedeem(orderHash);
     }
@@ -338,8 +392,20 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         } else {
             redeemTxHashs[orderHash] = txHash;
         }
+        redeemPendingAmounts[address(this)] -= hedgeOrder.inAmount;
+        redeemPendingAmounts[hedgeOrder.redeemToken] -= hedgeOrder.outAmount;
         _burn(address(this), hedgeOrder.inAmount);
         emit ConfirmRedeem(orderHash);
+    }
+
+    function rescueToken(address token) external onlyOwner {
+        require(token != address(0), "token is zero address");
+        require(vault != address(0), "vault is zero address");
+        uint256 rescueAmount = IERC20(token).balanceOf(address(this));
+        require(rescueAmount > mintPendingAmounts[token] + redeemPendingAmounts[token], "nothing to rescue");
+        rescueAmount -= mintPendingAmounts[token] + redeemPendingAmounts[token];
+        IERC20(token).safeTransfer(vault, rescueAmount);
+        emit RescueToken(token, rescueAmount);
     }
 
     function getOrderHashs() external view returns (bytes32[] memory orderHashs_) {
