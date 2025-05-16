@@ -29,6 +29,7 @@ contract UtilsTest is Test {
         assertEq(result, expected);
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     // Test error cases for the stringToAddress function
     function test_StringToAddress_InvalidLength() public {
         // Test too short
@@ -40,12 +41,14 @@ contract UtilsTest is Test {
         Utils.stringToAddress("0x1234567890123456789012345678901234567890123");
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     function test_StringToAddress_InvalidPrefix() public {
         // Test prefix is not 0x
         vm.expectRevert("Invalid address prefix");
         Utils.stringToAddress("1x1234567890123456789012345678901234567890");
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     function test_HexCharToByte_InvalidChar() public {
         // Test invalid hex character
         vm.expectRevert("Invalid hex character");
@@ -163,6 +166,7 @@ contract UtilsTest is Test {
         assertEq(result[0].amount, 200);
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     // Test error cases for the subTokenset function
     function test_SubTokenset_InsufficientAmount() public {
         // Create a Token array for testing
@@ -190,6 +194,7 @@ contract UtilsTest is Test {
         Utils.subTokenset(a, b);
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     function test_SubTokenset_NotContains() public {
         // Create a Token array for testing
         Token[] memory a = new Token[](1);
@@ -499,6 +504,7 @@ contract UtilsTest is Test {
         assertTrue(Utils.hasDuplicates(b));
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     // Test the validateTokenset function
     function test_ValidateTokenset() public {
         // Create a valid Token array
