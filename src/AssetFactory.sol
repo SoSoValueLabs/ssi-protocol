@@ -95,7 +95,7 @@ contract AssetFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable, IAs
     }
 
     function createAssetToken(Asset memory asset, uint maxFee, address issuer, address rebalancer, address feeManager, address swap_) external onlyOwner returns (address) {
-        require(issuer != address(0) && rebalancer != address(0) && feeManager != address(0), "controllers not set");
+        require(issuer != address(0) && rebalancer != address(0) && feeManager != address(0) && swap_ != address(0), "controllers not set");
         require(!assetIDs.contains(asset.id), "asset exists");
         address assetTokenAddress = address(new ERC1967Proxy(
             tokenImpl,

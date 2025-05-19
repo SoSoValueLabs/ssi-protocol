@@ -178,7 +178,9 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     function forceCancelSwapRequest(OrderInfo memory orderInfo) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
         validateOrderInfo(orderInfo);
         bytes32 orderHash = orderInfo.orderHash;
-        require(swapRequests[orderHash].status == SwapRequestStatus.PENDING || swapRequests[orderHash].status == SwapRequestStatus.MAKER_CONFIRMED, "swap request status is not pending or maker confirmed");
+        require(swapRequests[orderHash].status == SwapRequestStatus.PENDING ||
+            (swapRequests[orderHash].status == SwapRequestStatus.MAKER_CONFIRMED && !swapRequests[orderHash].outByContract),
+            "swap request status is not pending or maker confirmed (not out by contract)");
         require(swapRequests[orderHash].requestTimestamp + EXPIRATION <= block.timestamp, "swap request not expired");
         swapRequests[orderHash].status = SwapRequestStatus.FORCE_CANCEL;
         swapRequests[orderHash].blocknumber = block.number;
