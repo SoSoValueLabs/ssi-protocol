@@ -25,8 +25,9 @@ contract USSIRegressionTest is USSITest {
         quoteToken = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
         trader = 0x0306acEb4c20FF33480d90038F8b375cC6A6b66e;
         // set asset id
+        MINT_AMOUNT = 1000e6;
         ASSET_ID1 = 100;
-
+        ASSET_ID2 = 2;
         vm.startPrank(owner);
         factory = AssetFactory(0xb04eB6b64137d1673D46731C8f84718092c50B0D);
         factory.upgradeToAndCall(address(new AssetFactory()), "");
@@ -49,6 +50,10 @@ contract USSIRegressionTest is USSITest {
         assetTokenAddress =
             factory.createAssetToken(getAsset(), 10000, address(issuer), address(0x2), address(0x3), address(0x4));
         assetToken = AssetToken(assetTokenAddress);
+        assetTokenAddress2 =
+            factory.createAssetToken(getAsset2(), 10000, address(issuer), address(0x2), address(0x3), address(0x4));
+        assetToken2 = AssetToken(assetTokenAddress2);
+
         ussi.addSupportAsset(ASSET_ID1);
 
         swap = Swap(0xF909bfa750721501B4F8433588FaE5cE303Db08B);
@@ -73,8 +78,4 @@ contract USSIRegressionTest is USSITest {
     }
 
     function test_rescueToken() public override {}
-
-    function test_AddSupportAsset() public override {}
-
-    // function test_ConfirmMint() public override {}
 }

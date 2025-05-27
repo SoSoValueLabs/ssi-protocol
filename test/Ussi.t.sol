@@ -37,14 +37,15 @@ contract USSITest is Test {
     AssetFactory factory;
     AssetIssuer issuer;
     address assetTokenAddress;
+    address assetTokenAddress2;
     AssetToken assetToken;
     AssetToken assetToken2;
     USSI ussi;
     address quoteToken;
 
     uint256 ASSET_ID1;
-    uint256 constant ASSET_ID2 = 2;
-    uint256 constant MINT_AMOUNT = 1e8;
+    uint256 ASSET_ID2;
+    uint256 MINT_AMOUNT;
     uint256 constant USSI_AMOUNT = 10e8;
 
     function setUp() public virtual {
@@ -53,6 +54,8 @@ contract USSITest is Test {
         orderSignerPk = 0x3;
         orderSigner = vm.addr(orderSignerPk);
         ASSET_ID1 = 1;
+        ASSET_ID2 = 2;
+        MINT_AMOUNT = 1e8;
 
         // Create mock tokens
         WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
@@ -84,7 +87,7 @@ contract USSITest is Test {
         assetTokenAddress =
             factory.createAssetToken(getAsset(), 10000, address(issuer), address(0x2), address(0x3), address(0x4));
         assetToken = AssetToken(assetTokenAddress);
-        address assetTokenAddress2 =
+        assetTokenAddress2 =
             factory.createAssetToken(getAsset2(), 10000, address(issuer), address(0x2), address(0x3), address(0x4));
         assetToken2 = AssetToken(assetTokenAddress2);
 
