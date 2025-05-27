@@ -30,19 +30,21 @@ contract FundManagerTest is Test {
     AssetToken tokenImpl;
     AssetFactory factoryImpl;
 
-    function setUp() public {
+    string chain = "SETH";
+
+    function setUp() public virtual {
         WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
         WETH = new MockToken("Wrapped ETH", "WETH", 18);
         vm.startPrank(owner);
         swap = Swap(address(new ERC1967Proxy(
             address(new Swap()),
-            abi.encodeCall(Swap.initialize, (owner, "SETH")))
+            abi.encodeCall(Swap.initialize, (owner, chain)))
         ));
         tokenImpl = new AssetToken();
         factoryImpl = new AssetFactory();
         address factoryAddress = address(new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(AssetFactory.initialize, (owner, vault, "SETH", address(tokenImpl)))
+            abi.encodeCall(AssetFactory.initialize, (owner, vault, chain, address(tokenImpl)))
         ));
         factory = AssetFactory(factoryAddress);
         issuer = AssetIssuer(address(new ERC1967Proxy(
@@ -67,14 +69,14 @@ contract FundManagerTest is Test {
         swap.setTakerAddresses(outWhiteAddresses, outWhiteAddresses);
         Token[] memory whiteListTokens = new Token[](2);
         whiteListTokens[0] = Token({
-            chain: "SETH",
+            chain: chain,
             symbol: WBTC.symbol(),
             addr: vm.toString(address(WBTC)),
             decimals: WBTC.decimals(),
             amount: 0
         });
         whiteListTokens[1] = Token({
-            chain: "SETH",
+            chain: chain,
             symbol: WETH.symbol(),
             addr: vm.toString(address(WETH)),
             decimals: WETH.decimals(),
@@ -95,14 +97,14 @@ contract FundManagerTest is Test {
     function getAsset() public view returns (Asset memory) {
         Token[] memory tokenset_ = new Token[](1);
         tokenset_[0] = Token({
-            chain: "SETH",
+            chain: chain,
             symbol: WBTC.symbol(),
             addr: vm.toString(address(WBTC)),
             decimals: WBTC.decimals(),
             amount: 10 * 10 ** WBTC.decimals() / 60000
         });
         Asset memory asset = Asset({
-            id: 1,
+            id: 2025,
             name: "BTC",
             symbol: "BTC",
             tokenset: tokenset_
@@ -125,14 +127,14 @@ contract FundManagerTest is Test {
         vm.startPrank(pmm);
         Token[] memory inTokenset = new Token[](1);
         inTokenset[0] = Token({
-            chain: "SETH",
+            chain: chain,
             symbol: WETH.symbol(),
             addr: vm.toString(address(WETH)),
             decimals: WETH.decimals(),
             amount: 10 ** WETH.decimals()
         });
         Order memory order = Order({
-            chain: "SETH",
+            chain: chain,
             maker: pmm,
             nonce: 1,
             inTokenset: inTokenset,
@@ -212,7 +214,7 @@ contract FundManagerTest is Test {
         vm.startPrank(pmm);
         Token[] memory outTokenset = new Token[](1);
         outTokenset[0] = Token({
-            chain: "SETH",
+            chain: chain,
             symbol: WETH.symbol(),
             addr: vm.toString(address(WETH)),
             decimals: WETH.decimals(),
@@ -220,7 +222,7 @@ contract FundManagerTest is Test {
         });
         WETH.approve(address(swap), 10**WETH.decimals());
         Order memory order = Order({
-            chain: "SETH",
+            chain: chain,
             maker: pmm,
             nonce: 1,
             inTokenset: getAsset().tokenset,
@@ -296,14 +298,14 @@ contract FundManagerTest is Test {
         vm.startPrank(pmm);
         Token[] memory outTokenset = new Token[](1);
         outTokenset[0] = Token({
-            chain: "SETH",
+            chain: chain,
             symbol: WETH.symbol(),
             addr: vm.toString(address(WETH)),
             decimals: WETH.decimals(),
             amount: 10 ** WETH.decimals()
         });
         Order memory order = Order({
-            chain: "SETH",
+            chain: chain,
             maker: pmm,
             nonce: 1,
             inTokenset: inTokenset,
@@ -350,14 +352,14 @@ contract FundManagerTest is Test {
         AssetToken assetToken = AssetToken(assetTokenAddress);
         Token[] memory outTokenset = new Token[](1);
         outTokenset[0] = Token({
-            chain: "SETH",
+            chain: chain,
             symbol: WETH.symbol(),
             addr: vm.toString(address(WETH)),
             decimals: WETH.decimals(),
             amount: 10 ** WETH.decimals()
         });
         Order memory order = Order({
-            chain: "SETH",
+            chain: chain,
             maker: pmm,
             nonce: 1,
             inTokenset: assetToken.getBasket(),
@@ -400,10 +402,11 @@ contract FundManagerTest is Test {
     }
 
     function test_CreateAssetToken() public {
+        uint256 beforeLength = factory.getAssetIDs().length;
         address assetTokenAddress = createAssetToken();
         IAssetToken assetToken = IAssetToken(assetTokenAddress);
-        assertEq(factory.getAssetIDs().length, 1);
-        assertEq(factory.assetTokens(factory.getAssetIDs()[0]), assetTokenAddress);
+        assertEq(factory.getAssetIDs().length, beforeLength + 1);
+        assertEq(factory.assetTokens(factory.getAssetIDs()[beforeLength]), assetTokenAddress);
         assertEq(issuer.getIssueFee(assetToken.id()), 10000);
         assertEq(abi.encode(issuer.getIssueAmountRange(assetToken.id())), abi.encode(Range({min:10*10**8, max:10000*10**8})));
     }
@@ -637,14 +640,14 @@ contract FundManagerTest is Test {
             amount: 1412368749000018
         });
         tokenset_[1] = Token({
-            chain: "SETH",
-            symbol: "SETH",
+            chain: chain,
+            symbol: chain,
             addr: "",
             decimals: 18,
             amount: 8379981918000000
         });
         Asset memory asset = Asset({
-            id: 1,
+            id: 2025,
             name: "ETHBNB",
             symbol: "ETHBNB",
             tokenset: tokenset_
@@ -660,8 +663,8 @@ contract FundManagerTest is Test {
             amount: 0
         });
         whiteListTokens[1] = Token({
-            chain: "SETH",
-            symbol: "SETH",
+            chain: chain,
+            symbol: chain,
             addr: "",
             decimals: 18,
             amount: 0
@@ -678,11 +681,11 @@ contract FundManagerTest is Test {
         string[] memory inAddressList = new string[](1);
         inAddressList[0] = "0xd1d1aDfD330B29D4ccF9E0d44E90c256Df597dc9";
         string[] memory outAddressList = new string[](1);
-        outAddressList[0] = "0xc9b6174bDF1deE9Ba42Af97855Da322b91755E63";
+        outAddressList[0] = vm.toString(vault);
         Token[] memory inTokenset = new Token[](1);
         inTokenset[0] = Token({
-            chain: "SETH",
-            symbol: "SETH",
+            chain: chain,
+            symbol: chain,
             addr: "",
             decimals: 18,
             amount: 134694404446823
@@ -696,7 +699,7 @@ contract FundManagerTest is Test {
             amount: 800375696545671
         });
         Order memory order = Order({
-            chain: "SETH",
+            chain: chain,
             maker: pmm,
             nonce: 1719484311801267893,
             inTokenset: inTokenset,
@@ -882,10 +885,10 @@ contract FundManagerTest is Test {
     }
 
     function test_removeWhiteListTokens() public {
-        assertEq(swap.getWhiteListTokens().length, 2);
+        uint256 beforeLength = swap.getWhiteListTokens().length;
         Token[] memory whiteListTokens = new Token[](1);
         whiteListTokens[0] = Token({
-            chain: "SETH",
+            chain: chain,
             symbol: WBTC.symbol(),
             addr: vm.toString(address(WBTC)),
             decimals: WBTC.decimals(),
@@ -894,7 +897,7 @@ contract FundManagerTest is Test {
         vm.startPrank(owner);
         swap.removeWhiteListTokens(whiteListTokens);
         vm.stopPrank();
-        assertEq(swap.getWhiteListTokens().length, 1);
+        assertEq(swap.getWhiteListTokens().length, beforeLength - 1);
     }
 
     function test_cancelMint() public {

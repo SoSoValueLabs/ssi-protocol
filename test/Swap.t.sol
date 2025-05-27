@@ -957,7 +957,7 @@ contract SwapTest is Test {
 
         // Admin attempts to force cancel a rejected request
         vm.startPrank(owner);
-        vm.expectRevert("swap request status is not pending or maker confirmed");
+        vm.expectRevert("swap request status is not pending or maker confirmed (not out by contract)");
         swap.forceCancelSwapRequest(orderInfo);
         vm.stopPrank();
     }
