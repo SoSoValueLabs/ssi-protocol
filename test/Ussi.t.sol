@@ -17,9 +17,12 @@ contract USSITest is Test {
     MockToken WBTC;
     MockToken WETH;
 
+    string chain;
+    address issuerAddr;
+    address trader;
     address owner = vm.addr(0x1);
     address vault = vm.addr(0x2);
-    uint256 orderSignerPk = 0x3;
+    uint256 orderSignerPk;
     address orderSigner;
     address hedger = vm.addr(0x4);
     address receiver = vm.addr(0x5);
@@ -30,18 +33,21 @@ contract USSITest is Test {
     AssetToken assetToken;
     AssetToken assetToken2;
     USSI ussi;
+    address quoteToken;
 
-    uint256 constant ASSET_ID1 = 1;
+    uint256 ASSET_ID1;
     uint256 constant ASSET_ID2 = 2;
     uint256 constant MINT_AMOUNT = 1e8;
     uint256 constant USSI_AMOUNT = 10e8;
 
-    function setUp() public {
+    function setUp() public virtual {
+        orderSignerPk = 0x3;
         orderSigner = vm.addr(orderSignerPk);
 
         // Create mock tokens
         WBTC = new MockToken("Wrapped BTC", "WBTC", 8);
         WETH = new MockToken("Wrapped ETH", "WETH", 18);
+        chain = "SETH";
 
         vm.startPrank(owner);
 
@@ -50,8 +56,7 @@ contract USSITest is Test {
         AssetFactory factoryImpl = new AssetFactory();
         address factoryAddress = address(
             new ERC1967Proxy(
-                address(factoryImpl),
-                abi.encodeCall(AssetFactory.initialize, (owner, vault, "SETH", address(tokenImpl)))
+                address(factoryImpl), abi.encodeCall(AssetFactory.initialize, (owner, vault, chain, address(tokenImpl)))
             )
         );
         factory = AssetFactory(factoryAddress);
@@ -77,7 +82,7 @@ contract USSITest is Test {
             address(
                 new ERC1967Proxy(
                     address(new USSI()),
-                    abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), address(WBTC), "SETH"))
+                    abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), address(WBTC), chain))
                 )
             )
         );
@@ -93,12 +98,13 @@ contract USSITest is Test {
         vm.startPrank(address(issuer));
         assetToken.mint(staker, MINT_AMOUNT);
         vm.stopPrank();
+        ASSET_ID1 = 1;
     }
 
     function getAsset() public view returns (Asset memory) {
         Token[] memory tokenset_ = new Token[](1);
         tokenset_[0] = Token({
-            chain: "SETH",
+            chain: chain,
             symbol: WBTC.symbol(),
             addr: vm.toString(address(WBTC)),
             decimals: WBTC.decimals(),
@@ -111,7 +117,7 @@ contract USSITest is Test {
     function getAsset2() public view returns (Asset memory) {
         Token[] memory tokenset_ = new Token[](1);
         tokenset_[0] = Token({
-            chain: "SETH",
+            chain: chain,
             symbol: WETH.symbol(),
             addr: vm.toString(address(WETH)),
             decimals: WETH.decimals(),
@@ -126,13 +132,13 @@ contract USSITest is Test {
         assertEq(ussi.orderSigner(), orderSigner);
         assertEq(ussi.factoryAddress(), address(factory));
         assertEq(ussi.redeemToken(), address(WBTC));
-        assertEq(ussi.chain(), "SETH");
+        assertEq(ussi.chain(), chain);
         assertEq(ussi.name(), "USSI");
         assertEq(ussi.symbol(), "USSI");
         assertEq(ussi.decimals(), 8);
     }
 
-    function test_AddSupportAsset() public {
+    function test_AddSupportAsset() public virtual {
         vm.startPrank(owner);
 
         // Test adding a supported asset
@@ -166,10 +172,10 @@ contract USSITest is Test {
         vm.stopPrank();
     }
 
-    function test_ApplyMint() public {
+    function test_ApplyMint_alone() public virtual {
         // Create a mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -203,10 +209,10 @@ contract USSITest is Test {
         assertEq(assetToken.balanceOf(address(ussi)), MINT_AMOUNT);
     }
 
-    function test_ConfirmMint() public {
+    function test_ConfirmMint() public virtual {
         // Create and apply for minting
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -239,10 +245,10 @@ contract USSITest is Test {
         assertEq(ussi.balanceOf(hedger), USSI_AMOUNT);
     }
 
-    function test_CancelMint() public {
+    function test_CancelMint() public virtual {
         // Create and apply for minting
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -283,10 +289,10 @@ contract USSITest is Test {
         assertEq(assetToken.balanceOf(address(ussi)), 0);
     }
 
-    function test_RejectMint() public {
+    function test_RejectMint() public virtual {
         // Create and apply for minting
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -328,7 +334,7 @@ contract USSITest is Test {
 
         // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -368,7 +374,7 @@ contract USSITest is Test {
 
         // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: ussi.redeemToken(),
@@ -413,7 +419,7 @@ contract USSITest is Test {
 
         // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -457,7 +463,7 @@ contract USSITest is Test {
 
         // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -504,7 +510,7 @@ contract USSITest is Test {
 
         // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -559,7 +565,7 @@ contract USSITest is Test {
         vm.stopPrank();
     }
 
-    function test_UpdateRedeemToken() public {
+    function test_UpdateRedeemToken() public virtual {
         address newRedeemToken = address(WETH);
 
         vm.startPrank(owner);
@@ -584,7 +590,7 @@ contract USSITest is Test {
 
         // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -633,11 +639,11 @@ contract USSITest is Test {
         assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.PENDING));
     }
 
-    function test_GetOrderHashs() public {
+    function test_GetOrderHashs() public virtual {
         // Create multiple orders
         for (uint256 i = 0; i < 3; i++) {
             USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-                chain: "SETH",
+                chain: chain,
                 orderType: USSI.HedgeOrderType.MINT,
                 assetID: ASSET_ID1,
                 redeemToken: address(0),
@@ -678,7 +684,7 @@ contract USSITest is Test {
     function test_CheckHedgeOrder() public {
         // Create a valid mint order
         USSI.HedgeOrder memory validMintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -711,7 +717,7 @@ contract USSITest is Test {
 
         // Test unsupported asset ID
         USSI.HedgeOrder memory wrongAssetOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -734,7 +740,7 @@ contract USSITest is Test {
 
         // Test expired order
         USSI.HedgeOrder memory expiredOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -759,7 +765,7 @@ contract USSITest is Test {
         bytes memory wrongSign = abi.encodePacked(bytes32(0), bytes32(0), uint8(0));
 
         vm.expectRevert("signature not valid");
-        validMintOrder.chain = "SETH";
+        validMintOrder.chain = chain;
         ussi.checkHedgeOrder(validMintOrder, orderHash, wrongSign);
     }
 
@@ -780,7 +786,7 @@ contract USSITest is Test {
         address(
             new ERC1967Proxy(
                 address(newUSSI),
-                abi.encodeCall(USSI.initialize, (owner, orderSigner, address(0), address(WBTC), "SETH"))
+                abi.encodeCall(USSI.initialize, (owner, orderSigner, address(0), address(WBTC), chain))
             )
         );
 
@@ -789,7 +795,7 @@ contract USSITest is Test {
         address(
             new ERC1967Proxy(
                 address(newUSSI),
-                abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), address(0), "SETH"))
+                abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), address(0), chain))
             )
         );
 
@@ -798,7 +804,7 @@ contract USSITest is Test {
         address(
             new ERC1967Proxy(
                 address(newUSSI),
-                abi.encodeCall(USSI.initialize, (owner, address(0), address(factory), address(WBTC), "SETH"))
+                abi.encodeCall(USSI.initialize, (owner, address(0), address(factory), address(WBTC), chain))
             )
         );
         vm.stopPrank();
@@ -807,7 +813,7 @@ contract USSITest is Test {
     function test_CheckHedgeOrder_Redeem() public {
         // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -839,7 +845,7 @@ contract USSITest is Test {
 
         // Test unsupported redeem token
         USSI.HedgeOrder memory wrongRedeemTokenOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -863,7 +869,7 @@ contract USSITest is Test {
     function test_ApplyMint_Revert() public {
         // Create a mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -916,7 +922,7 @@ contract USSITest is Test {
 
         // Create a redeem order
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -963,10 +969,10 @@ contract USSITest is Test {
         vm.stopPrank();
     }
 
-    function test_ConfirmMint_Revert() public {
+    function test_ConfirmMint_Revert() public virtual {
         // Create a mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -1008,7 +1014,7 @@ contract USSITest is Test {
 
         // Test mismatched order type
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -1038,11 +1044,11 @@ contract USSITest is Test {
         vm.stopPrank();
     }
 
-    function test_ConfirmRedeem_Revert() public {
+    function test_ConfirmRedeem_Revert() public virtual {
         // Create a redeem order
         deal(address(ussi), hedger, USSI_AMOUNT);
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -1084,7 +1090,7 @@ contract USSITest is Test {
 
         // Test mismatched order type
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -1119,10 +1125,10 @@ contract USSITest is Test {
         vm.stopPrank();
     }
 
-    function test_CancelMint_Revert() public {
+    function test_CancelMint_Revert() public virtual {
         // Create a mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -1157,7 +1163,7 @@ contract USSITest is Test {
 
         // Test mismatched order type
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -1185,11 +1191,11 @@ contract USSITest is Test {
     }
 
     /// forge-config: default.allow_internal_expect_revert = true
-    function test_CancelRedeem_Revert() public {
+    function test_CancelRedeem_Revert() public virtual {
         // Create a redeem order
         deal(address(ussi), hedger, USSI_AMOUNT);
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
@@ -1224,7 +1230,7 @@ contract USSITest is Test {
 
         // Test mismatched order type
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.MINT,
             assetID: ASSET_ID1,
             redeemToken: address(0),
@@ -1250,47 +1256,47 @@ contract USSITest is Test {
         vm.stopPrank();
     }
 
-    function test_GetSupportTokens() public {
+    function test_GetSupportTokens() public virtual {
         vm.startPrank(owner);
-        
+
         // Initially there should be no supported tokens
         address[] memory initialTokens = ussi.getSupportTokens();
         assertEq(initialTokens.length, 0);
-        
+
         // Add a supported token
         address newToken = address(new MockToken("Test Token", "TEST", 18));
         ussi.addSupportToken(newToken);
-        
+
         // Get the list of supported tokens
         address[] memory tokens = ussi.getSupportTokens();
         assertEq(tokens.length, 1);
         assertEq(tokens[0], newToken);
-        
+
         vm.stopPrank();
     }
 
-    function test_AddSupportToken() public {
+    function test_AddSupportToken() public virtual {
         vm.startPrank(owner);
-        
+
         // Test adding a valid token
         address newToken = address(new MockToken("Test Token", "TEST", 18));
         ussi.addSupportToken(newToken);
-        
+
         // Verify the token was added
         address[] memory tokens = ussi.getSupportTokens();
         assertEq(tokens.length, 1);
         assertEq(tokens[0], newToken);
-        
+
         // Test adding zero address (should revert)
         vm.expectRevert("token is zero address");
         ussi.addSupportToken(address(0));
-        
+
         // Test adding the same token again (should revert)
         vm.expectRevert("already contains token");
         ussi.addSupportToken(newToken);
-        
+
         vm.stopPrank();
-        
+
         // Test non-owner cannot add token
         vm.startPrank(hedger);
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, hedger));
@@ -1298,30 +1304,30 @@ contract USSITest is Test {
         vm.stopPrank();
     }
 
-    function test_RemoveSupportToken() public {
+    function test_RemoveSupportToken() public virtual {
         vm.startPrank(owner);
-        
+
         // Add a token first
         address newToken = address(new MockToken("Test Token", "TEST", 18));
         ussi.addSupportToken(newToken);
-        
+
         // Test removing the token
         ussi.removeSupportToken(newToken);
-        
+
         // Verify the token was removed
         address[] memory tokens = ussi.getSupportTokens();
         assertEq(tokens.length, 0);
-        
+
         // Test removing zero address (should revert)
         vm.expectRevert("token is zero address");
         ussi.removeSupportToken(address(0));
-        
+
         // Test removing a non-existent token (should revert)
         vm.expectRevert("token is not supported");
         ussi.removeSupportToken(newToken);
-        
+
         vm.stopPrank();
-        
+
         // Test non-owner cannot remove token
         vm.startPrank(hedger);
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, hedger));
@@ -1331,22 +1337,22 @@ contract USSITest is Test {
 
     function test_UpdateVault() public {
         vm.startPrank(owner);
-        
+
         // Test updating to a valid vault address
         address newVault = address(0x123);
         ussi.updateVault(newVault);
         assertEq(ussi.vault(), newVault);
-        
+
         // Test updating to zero address (should revert)
         vm.expectRevert("vault is zero address");
         ussi.updateVault(address(0));
-        
+
         // Test updating to same address (should revert)
         vm.expectRevert("vault not change");
         ussi.updateVault(newVault);
-        
+
         vm.stopPrank();
-        
+
         // Test non-owner cannot update vault
         vm.startPrank(hedger);
         vm.expectRevert(abi.encodeWithSelector(OwnableUnauthorizedAccount.selector, hedger));
@@ -1367,7 +1373,7 @@ contract USSITest is Test {
 
         // Create a token mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.TOKEN_MINT,
             assetID: 0, // Not used for TOKEN_MINT
             redeemToken: address(0),
@@ -1414,7 +1420,7 @@ contract USSITest is Test {
 
         // Create a token mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.TOKEN_MINT,
             assetID: 0, // Not used for TOKEN_MINT
             redeemToken: address(0),
@@ -1468,7 +1474,7 @@ contract USSITest is Test {
 
         // Create a token mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.TOKEN_MINT,
             assetID: 0, // Not used for TOKEN_MINT
             redeemToken: address(0),
@@ -1518,7 +1524,7 @@ contract USSITest is Test {
 
         // Create a token mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.TOKEN_MINT,
             assetID: 0, // Not used for TOKEN_MINT
             redeemToken: address(0),
@@ -1627,7 +1633,7 @@ contract USSITest is Test {
 
         // Create a token mint order
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.TOKEN_MINT,
             assetID: 0, // Not used for TOKEN_MINT
             redeemToken: address(0),
@@ -1656,7 +1662,7 @@ contract USSITest is Test {
         // create a redeem order
         deal(address(ussi), hedger, USSI_AMOUNT);
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
+            chain: chain,
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: ASSET_ID1,
             redeemToken: address(WBTC),
