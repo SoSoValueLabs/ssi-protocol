@@ -239,49 +239,49 @@ contract USSITest is Test {
         assertEq(ussi.balanceOf(hedger), USSI_AMOUNT);
     }
 
-    function test_CancelMint() public {
-        // Create and apply for minting
-        USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
-            orderType: USSI.HedgeOrderType.MINT,
-            assetID: ASSET_ID1,
-            redeemToken: address(0),
-            nonce: 0,
-            inAmount: MINT_AMOUNT,
-            outAmount: USSI_AMOUNT,
-            deadline: block.timestamp + 600,
-            requester: hedger,
-            receiver: receiver,
-            token: address(0),
-            vault: address(0)
-        });
+    // function test_CancelMint() public {
+    //     // Create and apply for minting
+    //     USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+    //         chain: "SETH",
+    //         orderType: USSI.HedgeOrderType.MINT,
+    //         assetID: ASSET_ID1,
+    //         redeemToken: address(0),
+    //         nonce: 0,
+    //         inAmount: MINT_AMOUNT,
+    //         outAmount: USSI_AMOUNT,
+    //         deadline: block.timestamp + 600,
+    //         requester: hedger,
+    //         receiver: receiver,
+    //         token: address(0),
+    //         vault: address(0)
+    //     });
 
-        bytes32 orderHash = keccak256(abi.encode(mintOrder));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
-        bytes memory orderSign = abi.encodePacked(r, s, v);
+    //     bytes32 orderHash = keccak256(abi.encode(mintOrder));
+    //     (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
+    //     bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        vm.startPrank(hedger);
-        assetToken.approve(address(ussi), MINT_AMOUNT);
-        ussi.applyMint(mintOrder, orderSign);
+    //     vm.startPrank(hedger);
+    //     assetToken.approve(address(ussi), MINT_AMOUNT);
+    //     ussi.applyMint(mintOrder, orderSign);
 
-        // Attempt to cancel but not yet timed out
-        vm.expectRevert("not timeout");
-        ussi.cancelMint(orderHash);
+    //     // Attempt to cancel but not yet timed out
+    //     vm.expectRevert("not timeout");
+    //     ussi.cancelMint(orderHash);
 
-        // Wait for timeout
-        vm.warp(block.timestamp + ussi.MAX_MINT_DELAY() + 1);
+    //     // Wait for timeout
+    //     vm.warp(block.timestamp + ussi.MAX_MINT_DELAY() + 1);
 
-        // Cancel minting
-        ussi.cancelMint(orderHash);
-        vm.stopPrank();
+    //     // Cancel minting
+    //     ussi.cancelMint(orderHash);
+    //     vm.stopPrank();
 
-        // Verify the cancellation status
-        assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CANCELED));
+    //     // Verify the cancellation status
+    //     assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CANCELED));
 
-        // Verify the asset has been returned
-        assertEq(assetToken.balanceOf(hedger), MINT_AMOUNT);
-        assertEq(assetToken.balanceOf(address(ussi)), 0);
-    }
+    //     // Verify the asset has been returned
+    //     assertEq(assetToken.balanceOf(hedger), MINT_AMOUNT);
+    //     assertEq(assetToken.balanceOf(address(ussi)), 0);
+    // }
 
     function test_RejectMint() public {
         // Create and apply for minting
@@ -450,53 +450,53 @@ contract USSITest is Test {
         assertEq(ussi.balanceOf(address(hedger)), 0);
     }
 
-    /// forge-config: default.allow_internal_expect_revert = true
-    function test_CancelRedeem() public {
-        // Mint USSI tokens first
-        deal(address(ussi), hedger, USSI_AMOUNT);
+    // /// forge-config: default.allow_internal_expect_revert = true
+    // function test_CancelRedeem() public {
+    //     // Mint USSI tokens first
+    //     deal(address(ussi), hedger, USSI_AMOUNT);
 
-        // Create a redeem order
-        USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
-            orderType: USSI.HedgeOrderType.REDEEM,
-            assetID: ASSET_ID1,
-            redeemToken: address(WBTC),
-            nonce: 1,
-            inAmount: USSI_AMOUNT,
-            outAmount: MINT_AMOUNT,
-            deadline: block.timestamp + 600,
-            requester: hedger,
-            receiver: receiver,
-            token: address(0),
-            vault: address(0)
-        });
+    //     // Create a redeem order
+    //     USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
+    //         chain: "SETH",
+    //         orderType: USSI.HedgeOrderType.REDEEM,
+    //         assetID: ASSET_ID1,
+    //         redeemToken: address(WBTC),
+    //         nonce: 1,
+    //         inAmount: USSI_AMOUNT,
+    //         outAmount: MINT_AMOUNT,
+    //         deadline: block.timestamp + 600,
+    //         requester: hedger,
+    //         receiver: receiver,
+    //         token: address(0),
+    //         vault: address(0)
+    //     });
 
-        bytes32 orderHash = keccak256(abi.encode(redeemOrder));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
-        bytes memory orderSign = abi.encodePacked(r, s, v);
+    //     bytes32 orderHash = keccak256(abi.encode(redeemOrder));
+    //     (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
+    //     bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        vm.startPrank(hedger);
-        ussi.approve(address(ussi), USSI_AMOUNT);
-        ussi.applyRedeem(redeemOrder, orderSign);
+    //     vm.startPrank(hedger);
+    //     ussi.approve(address(ussi), USSI_AMOUNT);
+    //     ussi.applyRedeem(redeemOrder, orderSign);
 
-        // Attempt to cancel but not yet timed out
-        vm.expectRevert("not timeout");
-        ussi.cancelRedeem(orderHash);
+    //     // Attempt to cancel but not yet timed out
+    //     vm.expectRevert("not timeout");
+    //     ussi.cancelRedeem(orderHash);
 
-        // Wait for timeout
-        vm.warp(block.timestamp + ussi.MAX_REDEEM_DELAY() + 1);
+    //     // Wait for timeout
+    //     vm.warp(block.timestamp + ussi.MAX_REDEEM_DELAY() + 1);
 
-        // Cancel redemption
-        ussi.cancelRedeem(orderHash);
-        vm.stopPrank();
+    //     // Cancel redemption
+    //     ussi.cancelRedeem(orderHash);
+    //     vm.stopPrank();
 
-        // Verify the cancellation status
-        assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CANCELED));
+    //     // Verify the cancellation status
+    //     assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CANCELED));
 
-        // Verify USSI tokens have been returned
-        assertEq(ussi.balanceOf(hedger), USSI_AMOUNT);
-        assertEq(ussi.balanceOf(address(ussi)), 0);
-    }
+    //     // Verify USSI tokens have been returned
+    //     assertEq(ussi.balanceOf(hedger), USSI_AMOUNT);
+    //     assertEq(ussi.balanceOf(address(ussi)), 0);
+    // }
 
     function test_RejectRedeem() public {
         // Mint USSI tokens first
@@ -614,8 +614,8 @@ contract USSITest is Test {
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
         ussi.applyRedeem(redeemOrder, orderSign);
 
-        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
-        ussi.cancelRedeem(orderHash);
+        // vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        // ussi.cancelRedeem(orderHash);
 
         vm.stopPrank();
 
@@ -1119,136 +1119,136 @@ contract USSITest is Test {
         vm.stopPrank();
     }
 
-    function test_CancelMint_Revert() public {
-        // Create a mint order
-        USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
-            orderType: USSI.HedgeOrderType.MINT,
-            assetID: ASSET_ID1,
-            redeemToken: address(0),
-            nonce: 0,
-            inAmount: MINT_AMOUNT,
-            outAmount: USSI_AMOUNT,
-            deadline: block.timestamp + 600,
-            requester: hedger,
-            receiver: receiver,
-            token: address(0),
-            vault: address(0)
-        });
+    // function test_CancelMint_Revert() public {
+    //     // Create a mint order
+    //     USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+    //         chain: "SETH",
+    //         orderType: USSI.HedgeOrderType.MINT,
+    //         assetID: ASSET_ID1,
+    //         redeemToken: address(0),
+    //         nonce: 0,
+    //         inAmount: MINT_AMOUNT,
+    //         outAmount: USSI_AMOUNT,
+    //         deadline: block.timestamp + 600,
+    //         requester: hedger,
+    //         receiver: receiver,
+    //         token: address(0),
+    //         vault: address(0)
+    //     });
 
-        bytes32 orderHash = keccak256(abi.encode(mintOrder));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
-        bytes memory orderSign = abi.encodePacked(r, s, v);
+    //     bytes32 orderHash = keccak256(abi.encode(mintOrder));
+    //     (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
+    //     bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // Test non-existent order
-        vm.startPrank(hedger);
-        vm.expectRevert("order not exists");
-        ussi.cancelMint(orderHash);
-        vm.stopPrank();
+    //     // Test non-existent order
+    //     vm.startPrank(hedger);
+    //     vm.expectRevert("order not exists");
+    //     ussi.cancelMint(orderHash);
+    //     vm.stopPrank();
 
-        // Apply for minting
-        vm.startPrank(owner);
-        ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
-        vm.stopPrank();
+    //     // Apply for minting
+    //     vm.startPrank(owner);
+    //     ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
+    //     vm.stopPrank();
 
-        vm.startPrank(hedger);
-        assetToken.approve(address(ussi), MINT_AMOUNT);
-        ussi.applyMint(mintOrder, orderSign);
+    //     vm.startPrank(hedger);
+    //     assetToken.approve(address(ussi), MINT_AMOUNT);
+    //     ussi.applyMint(mintOrder, orderSign);
 
-        // Test mismatched order type
-        USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
-            orderType: USSI.HedgeOrderType.REDEEM,
-            assetID: ASSET_ID1,
-            redeemToken: address(WBTC),
-            nonce: 1,
-            inAmount: USSI_AMOUNT,
-            outAmount: MINT_AMOUNT,
-            deadline: block.timestamp + 600,
-            requester: hedger,
-            receiver: receiver,
-            token: address(0),
-            vault: address(0)
-        });
+    //     // Test mismatched order type
+    //     USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
+    //         chain: "SETH",
+    //         orderType: USSI.HedgeOrderType.REDEEM,
+    //         assetID: ASSET_ID1,
+    //         redeemToken: address(WBTC),
+    //         nonce: 1,
+    //         inAmount: USSI_AMOUNT,
+    //         outAmount: MINT_AMOUNT,
+    //         deadline: block.timestamp + 600,
+    //         requester: hedger,
+    //         receiver: receiver,
+    //         token: address(0),
+    //         vault: address(0)
+    //     });
 
-        bytes32 redeemOrderHash = keccak256(abi.encode(redeemOrder));
-        (v, r, s) = vm.sign(orderSignerPk, redeemOrderHash);
-        bytes memory redeemOrderSign = abi.encodePacked(r, s, v);
+    //     bytes32 redeemOrderHash = keccak256(abi.encode(redeemOrder));
+    //     (v, r, s) = vm.sign(orderSignerPk, redeemOrderHash);
+    //     bytes memory redeemOrderSign = abi.encodePacked(r, s, v);
 
-        deal(address(ussi), hedger, USSI_AMOUNT);
-        ussi.approve(address(ussi), USSI_AMOUNT);
-        ussi.applyRedeem(redeemOrder, redeemOrderSign);
-        vm.warp(block.timestamp + 1 days);
-        vm.expectRevert("order type not match");
-        ussi.cancelMint(redeemOrderHash);
-        vm.stopPrank();
-    }
+    //     deal(address(ussi), hedger, USSI_AMOUNT);
+    //     ussi.approve(address(ussi), USSI_AMOUNT);
+    //     ussi.applyRedeem(redeemOrder, redeemOrderSign);
+    //     vm.warp(block.timestamp + 1 days);
+    //     vm.expectRevert("order type not match");
+    //     ussi.cancelMint(redeemOrderHash);
+    //     vm.stopPrank();
+    // }
 
-    /// forge-config: default.allow_internal_expect_revert = true
-    function test_CancelRedeem_Revert() public {
-        // Create a redeem order
-        deal(address(ussi), hedger, USSI_AMOUNT);
-        USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
-            orderType: USSI.HedgeOrderType.REDEEM,
-            assetID: ASSET_ID1,
-            redeemToken: address(WBTC),
-            nonce: 1,
-            inAmount: USSI_AMOUNT,
-            outAmount: MINT_AMOUNT,
-            deadline: block.timestamp + 600,
-            requester: hedger,
-            receiver: receiver,
-            token: address(0),
-            vault: address(0)
-        });
+    // /// forge-config: default.allow_internal_expect_revert = true
+    // function test_CancelRedeem_Revert() public {
+    //     // Create a redeem order
+    //     deal(address(ussi), hedger, USSI_AMOUNT);
+    //     USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
+    //         chain: "SETH",
+    //         orderType: USSI.HedgeOrderType.REDEEM,
+    //         assetID: ASSET_ID1,
+    //         redeemToken: address(WBTC),
+    //         nonce: 1,
+    //         inAmount: USSI_AMOUNT,
+    //         outAmount: MINT_AMOUNT,
+    //         deadline: block.timestamp + 600,
+    //         requester: hedger,
+    //         receiver: receiver,
+    //         token: address(0),
+    //         vault: address(0)
+    //     });
 
-        bytes32 orderHash = keccak256(abi.encode(redeemOrder));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
-        bytes memory orderSign = abi.encodePacked(r, s, v);
+    //     bytes32 orderHash = keccak256(abi.encode(redeemOrder));
+    //     (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
+    //     bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        // Test non-existent order
-        vm.startPrank(hedger);
-        vm.expectRevert("order not exists");
-        ussi.cancelRedeem(orderHash);
-        vm.stopPrank();
+    //     // Test non-existent order
+    //     vm.startPrank(hedger);
+    //     vm.expectRevert("order not exists");
+    //     ussi.cancelRedeem(orderHash);
+    //     vm.stopPrank();
 
-        // Apply for redemption
-        vm.startPrank(owner);
-        ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
-        vm.stopPrank();
+    //     // Apply for redemption
+    //     vm.startPrank(owner);
+    //     ussi.grantRole(ussi.PARTICIPANT_ROLE(), hedger);
+    //     vm.stopPrank();
 
-        vm.startPrank(hedger);
-        ussi.approve(address(ussi), USSI_AMOUNT);
-        ussi.applyRedeem(redeemOrder, orderSign);
+    //     vm.startPrank(hedger);
+    //     ussi.approve(address(ussi), USSI_AMOUNT);
+    //     ussi.applyRedeem(redeemOrder, orderSign);
 
-        // Test mismatched order type
-        USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
-            orderType: USSI.HedgeOrderType.MINT,
-            assetID: ASSET_ID1,
-            redeemToken: address(0),
-            nonce: 0,
-            inAmount: MINT_AMOUNT,
-            outAmount: USSI_AMOUNT,
-            deadline: block.timestamp + 600,
-            requester: hedger,
-            receiver: receiver,
-            token: address(0),
-            vault: address(0)
-        });
+    //     // Test mismatched order type
+    //     USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+    //         chain: "SETH",
+    //         orderType: USSI.HedgeOrderType.MINT,
+    //         assetID: ASSET_ID1,
+    //         redeemToken: address(0),
+    //         nonce: 0,
+    //         inAmount: MINT_AMOUNT,
+    //         outAmount: USSI_AMOUNT,
+    //         deadline: block.timestamp + 600,
+    //         requester: hedger,
+    //         receiver: receiver,
+    //         token: address(0),
+    //         vault: address(0)
+    //     });
 
-        bytes32 mintOrderHash = keccak256(abi.encode(mintOrder));
-        (v, r, s) = vm.sign(orderSignerPk, mintOrderHash);
-        bytes memory mintOrderSign = abi.encodePacked(r, s, v);
+    //     bytes32 mintOrderHash = keccak256(abi.encode(mintOrder));
+    //     (v, r, s) = vm.sign(orderSignerPk, mintOrderHash);
+    //     bytes memory mintOrderSign = abi.encodePacked(r, s, v);
 
-        assetToken.approve(address(ussi), MINT_AMOUNT);
-        ussi.applyMint(mintOrder, mintOrderSign);
-        vm.expectRevert();
-        vm.warp(block.timestamp - 1 hours);
-        ussi.cancelRedeem(mintOrderHash);
-        vm.stopPrank();
-    }
+    //     assetToken.approve(address(ussi), MINT_AMOUNT);
+    //     ussi.applyMint(mintOrder, mintOrderSign);
+    //     vm.expectRevert();
+    //     vm.warp(block.timestamp - 1 hours);
+    //     ussi.cancelRedeem(mintOrderHash);
+    //     vm.stopPrank();
+    // }
 
     function test_GetSupportTokens() public {
         vm.startPrank(owner);
@@ -1401,59 +1401,59 @@ contract USSITest is Test {
         assertEq(IERC20(newToken).balanceOf(address(ussi)), MINT_AMOUNT);
     }
 
-    function test_CancelMint_TokenMint() public {
-        vm.startPrank(owner);
-        // Add a supported token
-        address newToken = address(new MockToken("Test Token", "TEST", 18));
-        ussi.addSupportToken(newToken);
-        ussi.updateVault(vm.addr(0x123));
-        vm.stopPrank();
+    // function test_CancelMint_TokenMint() public {
+    //     vm.startPrank(owner);
+    //     // Add a supported token
+    //     address newToken = address(new MockToken("Test Token", "TEST", 18));
+    //     ussi.addSupportToken(newToken);
+    //     ussi.updateVault(vm.addr(0x123));
+    //     vm.stopPrank();
 
-        // Mint tokens to hedger
-        deal(address(newToken), hedger, MINT_AMOUNT);
+    //     // Mint tokens to hedger
+    //     deal(address(newToken), hedger, MINT_AMOUNT);
 
-        // Create a token mint order
-        USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
-            orderType: USSI.HedgeOrderType.TOKEN_MINT,
-            assetID: 0, // Not used for TOKEN_MINT
-            redeemToken: address(0),
-            nonce: 0,
-            inAmount: MINT_AMOUNT,
-            outAmount: USSI_AMOUNT,
-            deadline: block.timestamp + 600,
-            requester: hedger,
-            receiver: receiver,
-            token: newToken,
-            vault: ussi.vault()
-        });
+    //     // Create a token mint order
+    //     USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+    //         chain: "SETH",
+    //         orderType: USSI.HedgeOrderType.TOKEN_MINT,
+    //         assetID: 0, // Not used for TOKEN_MINT
+    //         redeemToken: address(0),
+    //         nonce: 0,
+    //         inAmount: MINT_AMOUNT,
+    //         outAmount: USSI_AMOUNT,
+    //         deadline: block.timestamp + 600,
+    //         requester: hedger,
+    //         receiver: receiver,
+    //         token: newToken,
+    //         vault: ussi.vault()
+    //     });
 
-        bytes32 orderHash = keccak256(abi.encode(mintOrder));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
-        bytes memory orderSign = abi.encodePacked(r, s, v);
+    //     bytes32 orderHash = keccak256(abi.encode(mintOrder));
+    //     (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
+    //     bytes memory orderSign = abi.encodePacked(r, s, v);
 
-        vm.startPrank(hedger);
-        IERC20(newToken).approve(address(ussi), MINT_AMOUNT);
-        ussi.applyMint(mintOrder, orderSign);
+    //     vm.startPrank(hedger);
+    //     IERC20(newToken).approve(address(ussi), MINT_AMOUNT);
+    //     ussi.applyMint(mintOrder, orderSign);
 
-        // Attempt to cancel but not yet timed out
-        vm.expectRevert("not timeout");
-        ussi.cancelMint(orderHash);
+    //     // Attempt to cancel but not yet timed out
+    //     vm.expectRevert("not timeout");
+    //     ussi.cancelMint(orderHash);
 
-        // Wait for timeout
-        vm.warp(block.timestamp + ussi.MAX_MINT_DELAY() + 1);
+    //     // Wait for timeout
+    //     vm.warp(block.timestamp + ussi.MAX_MINT_DELAY() + 1);
 
-        // Cancel minting
-        ussi.cancelMint(orderHash);
-        vm.stopPrank();
+    //     // Cancel minting
+    //     ussi.cancelMint(orderHash);
+    //     vm.stopPrank();
 
-        // Verify the cancellation status
-        assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CANCELED));
+    //     // Verify the cancellation status
+    //     assertEq(uint8(ussi.orderStatus(orderHash)), uint8(USSI.HedgeOrderStatus.CANCELED));
 
-        // Verify the token has been returned
-        assertEq(IERC20(newToken).balanceOf(hedger), MINT_AMOUNT);
-        assertEq(IERC20(newToken).balanceOf(address(ussi)), 0);
-    }
+    //     // Verify the token has been returned
+    //     assertEq(IERC20(newToken).balanceOf(hedger), MINT_AMOUNT);
+    //     assertEq(IERC20(newToken).balanceOf(address(ussi)), 0);
+    // }
 
     function test_RejectMint_TokenMint() public {
         vm.startPrank(owner);

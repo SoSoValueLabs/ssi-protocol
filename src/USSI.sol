@@ -281,24 +281,24 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         emit ApplyMint(hedgeOrder);
     }
 
-    function cancelMint(bytes32 orderHash) external onlyRole(PARTICIPANT_ROLE) whenNotPaused {
-        require(orderHashs.contains(orderHash), "order not exists");
-        require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
-        require(requestTimestamps[orderHash] + MAX_MINT_DELAY <= block.timestamp, "not timeout");
-        HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
-        require(msg.sender == hedgeOrder.requester, "not requester");
-        require(hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT, "order type not match");
-        orderStatus[orderHash] = HedgeOrderStatus.CANCELED;
-        IERC20 token;
-        if (hedgeOrder.orderType == HedgeOrderType.MINT) {
-            token = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
-        } else {
-            token = IERC20(hedgeOrder.token);
-        }
-        mintPendingAmounts[address(token)] -= hedgeOrder.inAmount;
-        token.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
-        emit CancelMint(orderHash);
-    }
+    // function cancelMint(bytes32 orderHash) external onlyRole(PARTICIPANT_ROLE) whenNotPaused {
+    //     require(orderHashs.contains(orderHash), "order not exists");
+    //     require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
+    //     require(requestTimestamps[orderHash] + MAX_MINT_DELAY <= block.timestamp, "not timeout");
+    //     HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
+    //     require(msg.sender == hedgeOrder.requester, "not requester");
+    //     require(hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT, "order type not match");
+    //     orderStatus[orderHash] = HedgeOrderStatus.CANCELED;
+    //     IERC20 token;
+    //     if (hedgeOrder.orderType == HedgeOrderType.MINT) {
+    //         token = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
+    //     } else {
+    //         token = IERC20(hedgeOrder.token);
+    //     }
+    //     mintPendingAmounts[address(token)] -= hedgeOrder.inAmount;
+    //     token.safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
+    //     emit CancelMint(orderHash);
+    // }
 
     function rejectMint(bytes32 orderHash) external onlyOwner {
         require(orderHashs.contains(orderHash), "order not exists");
@@ -354,19 +354,19 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         emit ApplyRedeem(hedgeOrder);
     }
 
-    function cancelRedeem(bytes32 orderHash) external onlyRole(PARTICIPANT_ROLE) whenNotPaused {
-        require(orderHashs.contains(orderHash), "order not exists");
-        require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
-        require(requestTimestamps[orderHash] + MAX_REDEEM_DELAY <= block.timestamp, "not timeout");
-        HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
-        require(msg.sender == hedgeOrder.requester, "not requester");
-        require(hedgeOrder.orderType == HedgeOrderType.REDEEM, "order type not match");
-        orderStatus[orderHash] = HedgeOrderStatus.CANCELED;
-        redeemPendingAmounts[address(this)] -= hedgeOrder.inAmount;
-        redeemPendingAmounts[hedgeOrder.redeemToken] -= hedgeOrder.outAmount;
-        IERC20(address(this)).safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
-        emit CancelRedeem(orderHash);
-    }
+    // function cancelRedeem(bytes32 orderHash) external onlyRole(PARTICIPANT_ROLE) whenNotPaused {
+    //     require(orderHashs.contains(orderHash), "order not exists");
+    //     require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
+    //     require(requestTimestamps[orderHash] + MAX_REDEEM_DELAY <= block.timestamp, "not timeout");
+    //     HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
+    //     require(msg.sender == hedgeOrder.requester, "not requester");
+    //     require(hedgeOrder.orderType == HedgeOrderType.REDEEM, "order type not match");
+    //     orderStatus[orderHash] = HedgeOrderStatus.CANCELED;
+    //     redeemPendingAmounts[address(this)] -= hedgeOrder.inAmount;
+    //     redeemPendingAmounts[hedgeOrder.redeemToken] -= hedgeOrder.outAmount;
+    //     IERC20(address(this)).safeTransfer(hedgeOrder.requester, hedgeOrder.inAmount);
+    //     emit CancelRedeem(orderHash);
+    // }
 
     function rejectRedeem(bytes32 orderHash) external onlyOwner {
         require(orderHashs.contains(orderHash), "order not exists");

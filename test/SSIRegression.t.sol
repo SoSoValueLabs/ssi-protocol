@@ -15,6 +15,11 @@ import {Test, console} from "forge-std/Test.sol";
 
 contract SSIRegressionTest is FundManagerTest {
     function setUp() public override {
+        string memory rpcUrl = vm.envString("RPC_URL");
+        uint256 blockNumber = vm.envUint("BLOCK_NUMBER");
+        vm.createSelectFork(rpcUrl);
+        vm.rollFork(blockNumber);
+
         vm.etch(pmm, "");
         vm.resetNonce(pmm);
         vm.etch(ap, "");
