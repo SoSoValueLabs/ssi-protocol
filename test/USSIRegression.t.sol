@@ -18,6 +18,8 @@ import {Test, console} from "forge-std/Test.sol";
 
 contract USSIRegressionTest is USSITest {
     function setUp() public override {
+        string memory rpcUrl = vm.envString("RPC_URL");
+        vm.createSelectFork(rpcUrl);
         chain = AssetFactory(0xb04eB6b64137d1673D46731C8f84718092c50B0D).chain();
         owner = AssetFactory(0xb04eB6b64137d1673D46731C8f84718092c50B0D).owner();
         vault = AssetFactory(0xb04eB6b64137d1673D46731C8f84718092c50B0D).vault();
