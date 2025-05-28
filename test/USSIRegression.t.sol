@@ -76,6 +76,4 @@ contract USSIRegressionTest is USSITest {
         assetToken.mint(orderSigner, MINT_AMOUNT);
         vm.stopPrank();
     }
-
-    function test_rescueToken() public override {}
 }

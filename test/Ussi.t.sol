@@ -1706,6 +1706,7 @@ contract USSITest is Test {
 
         vm.startPrank(owner);
         // transfer WBTC to ussi
+        deal(address(ussi), address(ussi), 0);
         deal(redeemToken, address(ussi), MINT_AMOUNT * 2);
         vm.expectRevert("nothing to rescue");
         ussi.rescueToken(address(ussi));
@@ -1727,6 +1728,7 @@ contract USSITest is Test {
         vm.stopPrank();
 
         vm.startPrank(owner);
+        deal(address(ussi), address(ussi), USSI_AMOUNT);
         ussi.confirmRedeem(redeemOrderHash, bytes32(0));
         assertEq(ussi.redeemPendingAmounts(redeemToken), 0);
         assertEq(ussi.redeemPendingAmounts(address(ussi)), 0);

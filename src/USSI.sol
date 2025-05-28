@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.25;
-
-import "./Interface.sol";
+import './Interface.sol';
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -17,32 +16,14 @@ import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 // import "forge-std/console.sol";
 
-contract USSI is
-    Initializable,
-    OwnableUpgradeable,
-    AccessControlUpgradeable,
-    ERC20Upgradeable,
-    UUPSUpgradeable,
-    PausableUpgradeable
-{
+contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ERC20Upgradeable, UUPSUpgradeable, PausableUpgradeable {
     using EnumerableSet for EnumerableSet.Bytes32Set;
     using EnumerableSet for EnumerableSet.UintSet;
     using EnumerableSet for EnumerableSet.AddressSet;
     using SafeERC20 for IERC20;
 
-    enum HedgeOrderType {
-        NONE,
-        MINT,
-        REDEEM,
-        TOKEN_MINT
-    }
-    enum HedgeOrderStatus {
-        NONE,
-        PENDING,
-        REJECTED,
-        CONFIRMED,
-        CANCELED
-    }
+    enum HedgeOrderType { NONE, MINT, REDEEM, TOKEN_MINT }
+    enum HedgeOrderStatus { NONE, PENDING, REJECTED, CONFIRMED, CANCELED }
 
     struct HedgeOrder {
         string chain;
@@ -110,13 +91,7 @@ contract USSI is
         _disableInitializers();
     }
 
-    function initialize(
-        address owner,
-        address orderSigner_,
-        address factoryAddress_,
-        address redeemToken_,
-        string memory chain_
-    ) public initializer {
+    function initialize(address owner, address orderSigner_, address factoryAddress_, address redeemToken_, string memory chain_) public initializer {
         __Ownable_init(owner);
         __AccessControl_init();
         __ERC20_init("USSI", "USSI");
@@ -148,7 +123,7 @@ contract USSI is
 
     function getSupportAssetIDs() external view returns (uint256[] memory assetIDs) {
         assetIDs = new uint256[](supportAssetIDs.length());
-        for (uint256 i = 0; i < assetIDs.length; i++) {
+        for (uint i = 0; i < assetIDs.length; i++) {
             assetIDs[i] = supportAssetIDs.at(i);
         }
     }
@@ -169,7 +144,7 @@ contract USSI is
 
     function getSupportTokens() external view returns (address[] memory tokens) {
         tokens = new address[](supportTokens.length());
-        for (uint256 i = 0; i < tokens.length; i++) {
+        for (uint i = 0; i < tokens.length; i++) {
             tokens[i] = supportTokens.at(i);
         }
     }
@@ -222,7 +197,7 @@ contract USSI is
     function getVaultRoutes() external view returns (address[] memory requesters, address[] memory vaults) {
         requesters = new address[](routeRequesters.length());
         vaults = new address[](routeRequesters.length());
-        for (uint256 i = 0; i < routeRequesters.length(); i++) {
+        for (uint i = 0; i < routeRequesters.length(); i++) {
             requesters[i] = routeRequesters.at(i);
             vaults[i] = vaultRoutes[routeRequesters.at(i)];
         }
@@ -244,10 +219,7 @@ contract USSI is
         emit UpdateRedeemToken(oldRedeemToken, redeemToken);
     }
 
-    function checkHedgeOrder(HedgeOrder calldata hedgeOrder, bytes32 orderHash, bytes calldata orderSignature)
-        public
-        view
-    {
+    function checkHedgeOrder(HedgeOrder calldata hedgeOrder, bytes32 orderHash, bytes calldata orderSignature) public view {
         require(keccak256(abi.encode(chain)) == keccak256(abi.encode(hedgeOrder.chain)), "chain not match");
         require(hedgeOrder.orderType != HedgeOrderType.NONE, "order type is none");
         if (hedgeOrder.orderType == HedgeOrderType.MINT) {
@@ -283,18 +255,11 @@ contract USSI is
         orderHashs.add(orderHash);
     }
 
-    function applyMint(HedgeOrder calldata hedgeOrder, bytes calldata orderSignature)
-        external
-        onlyRole(PARTICIPANT_ROLE)
-        whenNotPaused
-    {
+    function applyMint(HedgeOrder calldata hedgeOrder, bytes calldata orderSignature) external onlyRole(PARTICIPANT_ROLE) whenNotPaused {
         require(hedgeOrder.requester == msg.sender, "msg sender is not requester");
         bytes32 orderHash = keccak256(abi.encode(hedgeOrder));
         checkHedgeOrder(hedgeOrder, orderHash, orderSignature);
-        require(
-            hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT,
-            "order type not match"
-        );
+        require(hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT, "order type not match");
         IERC20 token;
         if (hedgeOrder.orderType == HedgeOrderType.MINT) {
             // cannot hedge when underlying is changing
@@ -322,10 +287,7 @@ contract USSI is
         require(requestTimestamps[orderHash] + MAX_MINT_DELAY <= block.timestamp, "not timeout");
         HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
         require(msg.sender == hedgeOrder.requester, "not requester");
-        require(
-            hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT,
-            "order type not match"
-        );
+        require(hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT, "order type not match");
         orderStatus[orderHash] = HedgeOrderStatus.CANCELED;
         IERC20 token;
         if (hedgeOrder.orderType == HedgeOrderType.MINT) {
@@ -342,10 +304,7 @@ contract USSI is
         require(orderHashs.contains(orderHash), "order not exists");
         require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
         HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
-        require(
-            hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT,
-            "order type not match"
-        );
+        require(hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT, "order type not match");
         orderStatus[orderHash] = HedgeOrderStatus.REJECTED;
         IERC20 token;
         if (hedgeOrder.orderType == HedgeOrderType.MINT) {
@@ -362,10 +321,7 @@ contract USSI is
         require(orderHashs.contains(orderHash), "order not exists");
         require(orderStatus[orderHash] == HedgeOrderStatus.PENDING, "order is not pending");
         HedgeOrder storage hedgeOrder = hedgeOrders[orderHash];
-        require(
-            hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT,
-            "order type not match"
-        );
+        require(hedgeOrder.orderType == HedgeOrderType.MINT || hedgeOrder.orderType == HedgeOrderType.TOKEN_MINT, "order type not match");
         _mint(hedgeOrder.requester, hedgeOrder.outAmount);
         orderStatus[orderHash] = HedgeOrderStatus.CONFIRMED;
         if (hedgeOrder.orderType == HedgeOrderType.MINT) {
@@ -383,11 +339,7 @@ contract USSI is
         emit ConfirmMint(orderHash);
     }
 
-    function applyRedeem(HedgeOrder calldata hedgeOrder, bytes calldata orderSignature)
-        external
-        onlyRole(PARTICIPANT_ROLE)
-        whenNotPaused
-    {
+    function applyRedeem(HedgeOrder calldata hedgeOrder, bytes calldata orderSignature) external onlyRole(PARTICIPANT_ROLE) whenNotPaused {
         require(hedgeOrder.requester == msg.sender, "msg sender is not requester");
         bytes32 orderHash = keccak256(abi.encode(hedgeOrder));
         checkHedgeOrder(hedgeOrder, orderHash, orderSignature);
@@ -435,10 +387,7 @@ contract USSI is
         require(hedgeOrder.orderType == HedgeOrderType.REDEEM, "order type not match");
         orderStatus[orderHash] = HedgeOrderStatus.CONFIRMED;
         if (txHash == bytes32(0)) {
-            require(
-                IERC20(hedgeOrder.redeemToken).balanceOf(address(this)) >= hedgeOrder.outAmount,
-                "not enough redeem token"
-            );
+            require(IERC20(hedgeOrder.redeemToken).balanceOf(address(this)) >= hedgeOrder.outAmount, "not enough redeem token");
             IERC20(hedgeOrder.redeemToken).safeTransfer(hedgeOrder.requester, hedgeOrder.outAmount);
         } else {
             redeemTxHashs[orderHash] = txHash;
@@ -461,7 +410,7 @@ contract USSI is
 
     function getOrderHashs() external view returns (bytes32[] memory orderHashs_) {
         orderHashs_ = new bytes32[](orderHashs.length());
-        for (uint256 i = 0; i < orderHashs.length(); i++) {
+        for (uint i = 0; i < orderHashs.length(); i++) {
             orderHashs_[i] = orderHashs.at(i);
         }
     }
