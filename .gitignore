@@ -4,3 +4,4 @@ out
 broadcast
 .vscode
 verify.sh
+.env
