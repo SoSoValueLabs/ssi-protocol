@@ -635,7 +635,7 @@ contract USSITest is Test {
         vm.expectRevert();
         ussi.applyRedeem(redeemOrder, orderSign);
 
-        // vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        // vm.expectRevert();
         // ussi.cancelRedeem(orderHash);
 
         vm.stopPrank();
@@ -1144,7 +1144,7 @@ contract USSITest is Test {
     // function test_CancelMint_Revert() public {
     //     // Create a mint order
     //     USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-    //         chain: "SETH",
+    //         chain: chain,
     //         orderType: USSI.HedgeOrderType.MINT,
     //         assetID: ASSET_ID1,
     //         redeemToken: address(0),
@@ -1154,8 +1154,8 @@ contract USSITest is Test {
     //         deadline: block.timestamp + 600,
     //         requester: hedger,
     //         receiver: receiver,
-    //         token: address(0),
-    //         vault: address(0)
+    //         token: mintToken,
+    //         vault: mintTokenVault
     //     });
 
     //     bytes32 orderHash = keccak256(abi.encode(mintOrder));
@@ -1164,7 +1164,7 @@ contract USSITest is Test {
 
     //     // Test non-existent order
     //     vm.startPrank(hedger);
-    //     vm.expectRevert("order not exists");
+    //     vm.expectRevert();
     //     ussi.cancelMint(orderHash);
     //     vm.stopPrank();
 
@@ -1179,10 +1179,10 @@ contract USSITest is Test {
 
     //     // Test mismatched order type
     //     USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-    //         chain: "SETH",
+    //         chain: chain,
     //         orderType: USSI.HedgeOrderType.REDEEM,
     //         assetID: ASSET_ID1,
-    //         redeemToken: address(WBTC),
+    //         redeemToken: redeemToken,
     //         nonce: 1,
     //         inAmount: USSI_AMOUNT,
     //         outAmount: MINT_AMOUNT,
@@ -1201,20 +1201,20 @@ contract USSITest is Test {
     //     ussi.approve(address(ussi), USSI_AMOUNT);
     //     ussi.applyRedeem(redeemOrder, redeemOrderSign);
     //     vm.warp(block.timestamp + 1 days);
-    //     vm.expectRevert("order type not match");
+    //     vm.expectRevert();
     //     ussi.cancelMint(redeemOrderHash);
     //     vm.stopPrank();
     // }
 
     // /// forge-config: default.allow_internal_expect_revert = true
-    // function test_CancelRedeem_Revert() public {
+    // function test_CancelRedeem_Revert() public virtual {
     //     // Create a redeem order
     //     deal(address(ussi), hedger, USSI_AMOUNT);
     //     USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-    //         chain: "SETH",
+    //         chain: chain,
     //         orderType: USSI.HedgeOrderType.REDEEM,
     //         assetID: ASSET_ID1,
-    //         redeemToken: address(WBTC),
+    //         redeemToken: redeemToken,
     //         nonce: 1,
     //         inAmount: USSI_AMOUNT,
     //         outAmount: MINT_AMOUNT,
@@ -1231,7 +1231,7 @@ contract USSITest is Test {
 
     //     // Test non-existent order
     //     vm.startPrank(hedger);
-    //     vm.expectRevert("order not exists");
+    //     vm.expectRevert();
     //     ussi.cancelRedeem(orderHash);
     //     vm.stopPrank();
 
@@ -1246,7 +1246,7 @@ contract USSITest is Test {
 
     //     // Test mismatched order type
     //     USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-    //         chain: "SETH",
+    //         chain: chain,
     //         orderType: USSI.HedgeOrderType.MINT,
     //         assetID: ASSET_ID1,
     //         redeemToken: address(0),
@@ -1256,8 +1256,8 @@ contract USSITest is Test {
     //         deadline: block.timestamp + 600,
     //         requester: hedger,
     //         receiver: receiver,
-    //         token: address(0),
-    //         vault: address(0)
+    //         token: mintToken,
+    //         vault: mintTokenVault
     //     });
 
     //     bytes32 mintOrderHash = keccak256(abi.encode(mintOrder));
@@ -1436,7 +1436,7 @@ contract USSITest is Test {
 
     //     // Create a token mint order
     //     USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-    //         chain: "SETH",
+    //         chain: chain,
     //         orderType: USSI.HedgeOrderType.TOKEN_MINT,
     //         assetID: 0, // Not used for TOKEN_MINT
     //         redeemToken: address(0),
