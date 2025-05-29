@@ -257,7 +257,7 @@ contract USSITest is Test {
         // Verify USSI tokens have been minted
         assertEq(ussi.balanceOf(hedger), USSI_AMOUNT);
     }
-
+    
     // function test_CancelMint() public virtual {
     //     // Create and apply for minting
     //     USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
@@ -476,11 +476,12 @@ contract USSITest is Test {
     //     deal(address(ussi), hedger, USSI_AMOUNT);
 
     //     // Create a redeem order
+    //     uint256 ussi_balance_before = ussi.balanceOf(address(ussi));
     //     USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-    //         chain: "SETH",
+    //         chain: chain,
     //         orderType: USSI.HedgeOrderType.REDEEM,
     //         assetID: ASSET_ID1,
-    //         redeemToken: address(WBTC),
+    //         redeemToken: redeemToken,
     //         nonce: 1,
     //         inAmount: USSI_AMOUNT,
     //         outAmount: MINT_AMOUNT,
@@ -515,7 +516,7 @@ contract USSITest is Test {
 
     //     // Verify USSI tokens have been returned
     //     assertEq(ussi.balanceOf(hedger), USSI_AMOUNT);
-    //     assertEq(ussi.balanceOf(address(ussi)), 0);
+    //     assertEq(ussi.balanceOf(address(ussi)) - ussi_balance_before, 0);
     // }
 
     function test_RejectRedeem() public {
@@ -1141,7 +1142,7 @@ contract USSITest is Test {
         vm.stopPrank();
     }
 
-    // function test_CancelMint_Revert() public {
+    // function test_CancelMint_Revert() public virtual {
     //     // Create a mint order
     //     USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
     //         chain: chain,
