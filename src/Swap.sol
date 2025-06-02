@@ -26,7 +26,7 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     string[] public takerSenders;
 
     uint256 public constant MAX_MARKER_CONFIRM_DELAY = 1 hours;
-    uint256 public constant EXPIRATION = 6 hours;
+    uint256 public constant EXPIRATION = 1 hours;
 
     EnumerableSet.Bytes32Set whiteListTokenHashs;
     mapping(bytes32 => Token) public whiteListTokens;
@@ -178,9 +178,8 @@ contract Swap is Initializable, UUPSUpgradeable, PausableUpgradeable, AccessCont
     function forceCancelSwapRequest(OrderInfo memory orderInfo) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
         validateOrderInfo(orderInfo);
         bytes32 orderHash = orderInfo.orderHash;
-        require(swapRequests[orderHash].status == SwapRequestStatus.PENDING ||
-            (swapRequests[orderHash].status == SwapRequestStatus.MAKER_CONFIRMED && !swapRequests[orderHash].outByContract),
-            "swap request status is not pending or maker confirmed (not out by contract)");
+        require(swapRequests[orderHash].status == SwapRequestStatus.PENDING || swapRequests[orderHash].status == SwapRequestStatus.MAKER_CONFIRMED,
+            "swap request status is not pending or maker confirmed");
         require(swapRequests[orderHash].requestTimestamp + EXPIRATION <= block.timestamp, "swap request not expired");
         swapRequests[orderHash].status = SwapRequestStatus.FORCE_CANCEL;
         swapRequests[orderHash].blocknumber = block.number;
