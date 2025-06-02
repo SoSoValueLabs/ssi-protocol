@@ -282,69 +282,69 @@ contract StakingTest is Test {
         assertEq(WBTC.balanceOf(hedger), 0);
     }
 
-    function testCancelUSSI() public {
-        // mint
-        USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
-            chain: "SETH",
-            orderType: USSI.HedgeOrderType.MINT,
-            assetID: 1,
-            redeemToken: address(0),
-            nonce: 0,
-            inAmount: stakeAmount,
-            outAmount: stakeAmount * 10,
-            deadline: block.timestamp + 600,
-            requester: hedger,
-            receiver: hedger,
-            token: address(0),
-            vault: address(0)
-        });
-        vm.startPrank(owner);
-        uSSI.grantRole(uSSI.PARTICIPANT_ROLE(), hedger);
-        uSSI.addSupportAsset(1);
-        vm.stopPrank();
-        bytes32 orderHash = keccak256(abi.encode(mintOrder));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
-        bytes memory orderSign = abi.encodePacked(r, s, v);
-        vm.startPrank(hedger);
-        assetToken.approve(address(uSSI), stakeAmount);
-        uint256 balanceBefore = assetToken.balanceOf(hedger);
-        uSSI.applyMint(mintOrder, orderSign);
-        vm.expectRevert();
-        uSSI.cancelMint(orderHash);
-        vm.warp(block.timestamp + uSSI.MAX_MINT_DELAY());
-        uSSI.cancelMint(orderHash);
-        uint256 balanceAfter = assetToken.balanceOf(hedger);
-        assertEq(balanceBefore, balanceAfter);
-        vm.stopPrank();
-        // redeem
-        deal(address(uSSI), hedger, stakeAmount * 10);
-        USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
-            chain: "SETH",
-            orderType: USSI.HedgeOrderType.REDEEM,
-            assetID: 1,
-            redeemToken: uSSI.redeemToken(),
-            nonce: 1,
-            inAmount: stakeAmount * 10,
-            outAmount: stakeAmount,
-            deadline: block.timestamp + 600,
-            requester: hedger,
-            receiver: hedger,
-            token: address(0),
-            vault: address(0)
-        });
-        orderHash = keccak256(abi.encode(redeemOrder));
-        (v, r, s) = vm.sign(orderSignerPk, orderHash);
-        orderSign = abi.encodePacked(r, s, v);
-        vm.startPrank(hedger);
-        balanceBefore = uSSI.balanceOf(hedger);
-        uSSI.approve(address(uSSI), stakeAmount * 10);
-        uSSI.applyRedeem(redeemOrder, orderSign);
-        vm.expectRevert();
-        uSSI.cancelRedeem(orderHash);
-        vm.warp(block.timestamp + uSSI.MAX_REDEEM_DELAY());
-        uSSI.cancelRedeem(orderHash);
-        balanceAfter = uSSI.balanceOf(hedger);
-        assertEq(balanceBefore, balanceAfter);
-        vm.stopPrank();
-    }
+    // function testCancelUSSI() public {
+    //     // mint
+    //     USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+    //         chain: "SETH",
+    //         orderType: USSI.HedgeOrderType.MINT,
+    //         assetID: 1,
+    //         redeemToken: address(0),
+    //         nonce: 0,
+    //         inAmount: stakeAmount,
+    //         outAmount: stakeAmount * 10,
+    //         deadline: block.timestamp + 600,
+    //         requester: hedger,
+    //         receiver: hedger,
+    //         token: address(0),
+    //         vault: address(0)
+    //     });
+    //     vm.startPrank(owner);
+    //     uSSI.grantRole(uSSI.PARTICIPANT_ROLE(), hedger);
+    //     uSSI.addSupportAsset(1);
+    //     vm.stopPrank();
+    //     bytes32 orderHash = keccak256(abi.encode(mintOrder));
+    //     (uint8 v, bytes32 r, bytes32 s) = vm.sign(orderSignerPk, orderHash);
+    //     bytes memory orderSign = abi.encodePacked(r, s, v);
+    //     vm.startPrank(hedger);
+    //     assetToken.approve(address(uSSI), stakeAmount);
+    //     uint256 balanceBefore = assetToken.balanceOf(hedger);
+    //     uSSI.applyMint(mintOrder, orderSign);
+    //     vm.expectRevert();
+    //     uSSI.cancelMint(orderHash);
+    //     vm.warp(block.timestamp + uSSI.MAX_MINT_DELAY());
+    //     uSSI.cancelMint(orderHash);
+    //     uint256 balanceAfter = assetToken.balanceOf(hedger);
+    //     assertEq(balanceBefore, balanceAfter);
+    //     vm.stopPrank();
+    //     // redeem
+    //     deal(address(uSSI), hedger, stakeAmount * 10);
+    //     USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
+    //         chain: "SETH",
+    //         orderType: USSI.HedgeOrderType.REDEEM,
+    //         assetID: 1,
+    //         redeemToken: uSSI.redeemToken(),
+    //         nonce: 1,
+    //         inAmount: stakeAmount * 10,
+    //         outAmount: stakeAmount,
+    //         deadline: block.timestamp + 600,
+    //         requester: hedger,
+    //         receiver: hedger,
+    //         token: address(0),
+    //         vault: address(0)
+    //     });
+    //     orderHash = keccak256(abi.encode(redeemOrder));
+    //     (v, r, s) = vm.sign(orderSignerPk, orderHash);
+    //     orderSign = abi.encodePacked(r, s, v);
+    //     vm.startPrank(hedger);
+    //     balanceBefore = uSSI.balanceOf(hedger);
+    //     uSSI.approve(address(uSSI), stakeAmount * 10);
+    //     uSSI.applyRedeem(redeemOrder, orderSign);
+    //     vm.expectRevert();
+    //     uSSI.cancelRedeem(orderHash);
+    //     vm.warp(block.timestamp + uSSI.MAX_REDEEM_DELAY());
+    //     uSSI.cancelRedeem(orderHash);
+    //     balanceAfter = uSSI.balanceOf(hedger);
+    //     assertEq(balanceBefore, balanceAfter);
+    //     vm.stopPrank();
+    // }
 }

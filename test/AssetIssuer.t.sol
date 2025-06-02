@@ -504,58 +504,58 @@ contract AssetIssuerTest is Test {
         assertEq(issuer.getMintRequestLength(), 1);
     }
 
-    // Test canceling mint request
-    function test_CancelMintRequest() public {
-        // address assetTokenAddress = createAssetToken();
-        OrderInfo memory orderInfo = createMintOrderInfo();
-        uint256 assetID = AssetToken(assetTokenAddress).id();
+    // // Test canceling mint request
+    // function test_CancelMintRequest() public {
+    //     // address assetTokenAddress = createAssetToken();
+    //     OrderInfo memory orderInfo = createMintOrderInfo();
+    //     uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // Mint tokens to ap
-        vm.startPrank(address(WETH));
-        WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+    //     // Mint tokens to ap
+    //     vm.startPrank(address(WETH));
+    //     WETH.mint(ap, 10 * 10 ** 18);
+    //     vm.stopPrank();
 
-        vm.startPrank(ap);
-        WETH.approve(address(issuer), 1e15 * 10 ** 18);
-        uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
+    //     vm.startPrank(ap);
+    //     WETH.approve(address(issuer), 1e15 * 10 ** 18);
+    //     uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
 
-        // Wait one day to cancel
-        vm.warp(block.timestamp + 1 days);
-        issuer.cancelMintRequest(nonce, orderInfo, false);
-        vm.stopPrank();
+    //     // Wait one day to cancel
+    //     vm.warp(block.timestamp + 1 days);
+    //     issuer.cancelMintRequest(nonce, orderInfo, false);
+    //     vm.stopPrank();
 
-        Request memory request = issuer.getMintRequest(nonce);
-        assertEq(uint256(request.status), uint256(RequestStatus.CANCEL));
-    }
+    //     Request memory request = issuer.getMintRequest(nonce);
+    //     assertEq(uint256(request.status), uint256(RequestStatus.CANCEL));
+    // }
 
-    // Test force-canceling mint request
-    function test_ForceCancelMintRequest() public {
-        // address assetTokenAddress = createAssetToken();
-        OrderInfo memory orderInfo = createMintOrderInfo();
-        uint256 assetID = AssetToken(assetTokenAddress).id();
+    // // Test force-canceling mint request
+    // function test_ForceCancelMintRequest() public {
+    //     // address assetTokenAddress = createAssetToken();
+    //     OrderInfo memory orderInfo = createMintOrderInfo();
+    //     uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // Mint tokens to ap
-        vm.startPrank(address(WETH));
-        WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+    //     // Mint tokens to ap
+    //     vm.startPrank(address(WETH));
+    //     WETH.mint(ap, 10 * 10 ** 18);
+    //     vm.stopPrank();
 
-        vm.startPrank(ap);
-        WETH.approve(address(issuer), 1e15 * 10 ** 18);
-        uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
+    //     vm.startPrank(ap);
+    //     WETH.approve(address(issuer), 1e15 * 10 ** 18);
+    //     uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
 
-        // Wait one day to force-cancel
-        vm.warp(block.timestamp + 1 days);
-        issuer.cancelMintRequest(nonce, orderInfo, true);
-        vm.stopPrank();
+    //     // Wait one day to force-cancel
+    //     vm.warp(block.timestamp + 1 days);
+    //     issuer.cancelMintRequest(nonce, orderInfo, true);
+    //     vm.stopPrank();
 
-        Request memory request = issuer.getMintRequest(nonce);
-        assertEq(uint256(request.status), uint256(RequestStatus.CANCEL));
+    //     Request memory request = issuer.getMintRequest(nonce);
+    //     assertEq(uint256(request.status), uint256(RequestStatus.CANCEL));
 
-        // Verify claimable amount
-        address tokenAddress = vm.parseAddress(orderInfo.order.inTokenset[0].addr);
-        uint256 claimable = issuer.claimables(tokenAddress, ap);
-        assertTrue(claimable > 0);
-    }
+    //     // Verify claimable amount
+    //     address tokenAddress = vm.parseAddress(orderInfo.order.inTokenset[0].addr);
+    //     uint256 claimable = issuer.claimables(tokenAddress, ap);
+    //     assertTrue(claimable > 0);
+    // }
 
     // Test rejecting mint request
     function test_RejectMintRequest() public {
@@ -752,54 +752,54 @@ contract AssetIssuerTest is Test {
         assertEq(issuer.getRedeemRequestLength(), 1);
     }
 
-    // Test canceling redeem request
-    function test_CancelRedeemRequest() public {
-        // Mint asset token first
-        // address assetTokenAddress = createAssetToken();
-        OrderInfo memory mintOrderInfo = createMintOrderInfo();
-        uint256 assetID = AssetToken(assetTokenAddress).id();
+    // // Test canceling redeem request
+    // function test_CancelRedeemRequest() public {
+    //     // Mint asset token first
+    //     // address assetTokenAddress = createAssetToken();
+    //     OrderInfo memory mintOrderInfo = createMintOrderInfo();
+    //     uint256 assetID = AssetToken(assetTokenAddress).id();
 
-        // Mint tokens to ap
-        vm.startPrank(address(WETH));
-        WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+    //     // Mint tokens to ap
+    //     vm.startPrank(address(WETH));
+    //     WETH.mint(ap, 10 * 10 ** 18);
+    //     vm.stopPrank();
 
-        vm.startPrank(ap);
-        WETH.approve(address(issuer), 1e15 * 10 ** 18);
-        uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
-        vm.stopPrank();
+    //     vm.startPrank(ap);
+    //     WETH.approve(address(issuer), 1e15 * 10 ** 18);
+    //     uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
+    //     vm.stopPrank();
 
-        // Maker confirms the request
-        vm.startPrank(pmm);
-        bytes[] memory outTxHashs = new bytes[](1);
-        outTxHashs[0] = "tx_hash";
-        swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
-        vm.stopPrank();
+    //     // Maker confirms the request
+    //     vm.startPrank(pmm);
+    //     bytes[] memory outTxHashs = new bytes[](1);
+    //     outTxHashs[0] = "tx_hash";
+    //     swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
+    //     vm.stopPrank();
 
-        // Confirm mint request
-        vm.startPrank(owner);
-        bytes[] memory inTxHashs = new bytes[](1);
-        inTxHashs[0] = "tx_hash";
-        issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
-        vm.stopPrank();
+    //     // Confirm mint request
+    //     vm.startPrank(owner);
+    //     bytes[] memory inTxHashs = new bytes[](1);
+    //     inTxHashs[0] = "tx_hash";
+    //     issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
+    //     vm.stopPrank();
 
-        // Create redeem order
-        OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
+    //     // Create redeem order
+    //     OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
-        vm.startPrank(ap);
-        IERC20(assetTokenAddress).approve(address(issuer), mintOrderInfo.order.outAmount);
-        uint256 nonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
-        vm.stopPrank();
+    //     vm.startPrank(ap);
+    //     IERC20(assetTokenAddress).approve(address(issuer), mintOrderInfo.order.outAmount);
+    //     uint256 nonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 10000);
+    //     vm.stopPrank();
 
-        // Cancel redeem request
-        vm.startPrank(ap);
-        vm.warp(block.timestamp + 1 hours);
-        issuer.cancelRedeemRequest(nonce, redeemOrderInfo);
-        vm.stopPrank();
+    //     // Cancel redeem request
+    //     vm.startPrank(ap);
+    //     vm.warp(block.timestamp + 1 hours);
+    //     issuer.cancelRedeemRequest(nonce, redeemOrderInfo);
+    //     vm.stopPrank();
 
-        Request memory request = issuer.getRedeemRequest(nonce);
-        assertEq(uint256(request.status), uint256(RequestStatus.CANCEL));
-    }
+    //     Request memory request = issuer.getRedeemRequest(nonce);
+    //     assertEq(uint256(request.status), uint256(RequestStatus.CANCEL));
+    // }
 
     function test_RejectRedeemRequest() public {
         // Mint asset token first
@@ -988,10 +988,17 @@ contract AssetIssuerTest is Test {
         uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
         vm.stopPrank();
 
-        // Force-cancel mint request to make ap have claimable tokens
-        vm.startPrank(ap);
-        vm.warp(block.timestamp + 1 days);
-        issuer.cancelMintRequest(mintNonce, mintOrderInfo, true);
+        // // Force-cancel mint request to make ap have claimable tokens
+        // vm.startPrank(ap);
+        // vm.warp(block.timestamp + 1 days);
+        // issuer.cancelMintRequest(mintNonce, mintOrderInfo, true);
+        // vm.stopPrank();
+
+        vm.startPrank(pmm);
+        swap.makerRejectSwapRequest(mintOrderInfo);
+        vm.stopPrank();
+        vm.startPrank(owner);
+        issuer.rejectMintRequest(mintNonce, mintOrderInfo, true);
         vm.stopPrank();
 
         // Record balance before claiming
@@ -1216,72 +1223,72 @@ contract AssetIssuerTest is Test {
         vm.stopPrank();
     }
 
-    // Test error cases for cancelMintRequest and cancelRedeemRequest
-    function test_CancelRequestErrors() public {
-        uint256 assetID = AssetToken(assetTokenAddress).id();
-        OrderInfo memory mintOrderInfo = createMintOrderInfo();
+    // // Test error cases for cancelMintRequest and cancelRedeemRequest
+    // function test_CancelRequestErrors() public {
+    //     uint256 assetID = AssetToken(assetTokenAddress).id();
+    //     OrderInfo memory mintOrderInfo = createMintOrderInfo();
 
-        // Mint tokens to ap
-        vm.startPrank(address(WETH));
-        WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank();
+    //     // Mint tokens to ap
+    //     vm.startPrank(address(WETH));
+    //     WETH.mint(ap, 10 * 10 ** 18);
+    //     vm.stopPrank();
 
-        vm.startPrank(ap);
-        WETH.approve(address(issuer), 1e15 * 10 ** 18);
-        uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
-        vm.stopPrank();
+    //     vm.startPrank(ap);
+    //     WETH.approve(address(issuer), 1e15 * 10 ** 18);
+    //     uint256 mintNonce = issuer.addMintRequest(assetID, mintOrderInfo, 10000);
+    //     vm.stopPrank();
 
-        // Test non-requester canceling
-        address nonRequester = vm.addr(0x10);
-        vm.startPrank(nonRequester);
-        vm.expectRevert("not order requester");
-        issuer.cancelMintRequest(mintNonce, mintOrderInfo, false);
-        vm.stopPrank();
+    //     // Test non-requester canceling
+    //     address nonRequester = vm.addr(0x10);
+    //     vm.startPrank(nonRequester);
+    //     vm.expectRevert("not order requester");
+    //     issuer.cancelMintRequest(mintNonce, mintOrderInfo, false);
+    //     vm.stopPrank();
 
-        // Test canceling a non-existent request
-        vm.startPrank(ap);
-        vm.expectRevert("nonce too large");
-        issuer.cancelMintRequest(999, mintOrderInfo, false);
-        vm.stopPrank();
+    //     // Test canceling a non-existent request
+    //     vm.startPrank(ap);
+    //     vm.expectRevert("nonce too large");
+    //     issuer.cancelMintRequest(999, mintOrderInfo, false);
+    //     vm.stopPrank();
 
-        // Test canceling a confirmed request
-        vm.startPrank(pmm);
-        bytes[] memory outTxHashs = new bytes[](1);
-        outTxHashs[0] = "tx_hash";
-        swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
-        vm.stopPrank();
+    //     // Test canceling a confirmed request
+    //     vm.startPrank(pmm);
+    //     bytes[] memory outTxHashs = new bytes[](1);
+    //     outTxHashs[0] = "tx_hash";
+    //     swap.makerConfirmSwapRequest(mintOrderInfo, outTxHashs);
+    //     vm.stopPrank();
 
-        vm.startPrank(owner);
-        bytes[] memory inTxHashs = new bytes[](1);
-        inTxHashs[0] = "tx_hash";
-        issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
-        vm.stopPrank();
+    //     vm.startPrank(owner);
+    //     bytes[] memory inTxHashs = new bytes[](1);
+    //     inTxHashs[0] = "tx_hash";
+    //     issuer.confirmMintRequest(mintNonce, mintOrderInfo, inTxHashs);
+    //     vm.stopPrank();
 
-        vm.startPrank(ap);
-        vm.expectRevert();
-        issuer.cancelMintRequest(mintNonce, mintOrderInfo, false);
-        vm.stopPrank();
+    //     vm.startPrank(ap);
+    //     vm.expectRevert();
+    //     issuer.cancelMintRequest(mintNonce, mintOrderInfo, false);
+    //     vm.stopPrank();
 
-        // Create redeem order
-        OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
+    //     // Create redeem order
+    //     OrderInfo memory redeemOrderInfo = createRedeemOrderInfo(assetTokenAddress);
 
-        vm.startPrank(ap);
-        IERC20(assetTokenAddress).approve(address(issuer), mintOrderInfo.order.outAmount);
-        uint256 redeemNonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 20000);
-        vm.stopPrank();
+    //     vm.startPrank(ap);
+    //     IERC20(assetTokenAddress).approve(address(issuer), mintOrderInfo.order.outAmount);
+    //     uint256 redeemNonce = issuer.addRedeemRequest(assetID, redeemOrderInfo, 20000);
+    //     vm.stopPrank();
 
-        // Test non-requester canceling
-        vm.startPrank(nonRequester);
-        vm.expectRevert("not order requester");
-        issuer.cancelRedeemRequest(redeemNonce, redeemOrderInfo);
-        vm.stopPrank;
+    //     // Test non-requester canceling
+    //     vm.startPrank(nonRequester);
+    //     vm.expectRevert("not order requester");
+    //     issuer.cancelRedeemRequest(redeemNonce, redeemOrderInfo);
+    //     vm.stopPrank;
 
-        // Test canceling a non-existent request
-        vm.startPrank(ap);
-        vm.expectRevert("nonce too large");
-        issuer.cancelRedeemRequest(999, redeemOrderInfo);
-        vm.stopPrank();
-    }
+    //     // Test canceling a non-existent request
+    //     vm.startPrank(ap);
+    //     vm.expectRevert("nonce too large");
+    //     issuer.cancelRedeemRequest(999, redeemOrderInfo);
+    //     vm.stopPrank();
+    // }
 
     // Test error cases for rejectMintRequest and rejectRedeemRequest
     function test_RejectRequestErrors() public {
@@ -1687,10 +1694,10 @@ contract AssetIssuerTest is Test {
         OrderInfo memory mismatchOrderInfo = createMintOrderInfo();
         bytes32 differentHash = keccak256("different_hash");
 
-        // Attempt to cancel the request but use mismatched order information
-        vm.startPrank(ap);
+        // Attempt to reject the request but use mismatched order information
+        vm.startPrank(owner);
         vm.expectRevert("order hash not match");
-        issuer.cancelMintRequest(
+        issuer.rejectMintRequest(
             mintNonce,
             OrderInfo({order: mismatchOrderInfo.order, orderHash: differentHash, orderSign: mismatchOrderInfo.orderSign}),
             false
@@ -1733,37 +1740,37 @@ contract AssetIssuerTest is Test {
         vm.stopPrank;
     }
 
-    // Test insufficient balance error in cancelMintRequest function
-    function test_CancelMintRequestInsufficientBalance() public {
-        uint256 assetID = AssetToken(assetTokenAddress).id();
-        OrderInfo memory orderInfo = createMintOrderInfo();
+    // // Test insufficient balance error in cancelMintRequest function
+    // function test_CancelMintRequestInsufficientBalance() public {
+    //     uint256 assetID = AssetToken(assetTokenAddress).id();
+    //     OrderInfo memory orderInfo = createMintOrderInfo();
 
-        // Mint tokens to ap
-        vm.startPrank(address(WETH));
-        WETH.mint(ap, 10 * 10 ** 18);
-        vm.stopPrank;
+    //     // Mint tokens to ap
+    //     vm.startPrank(address(WETH));
+    //     WETH.mint(ap, 10 * 10 ** 18);
+    //     vm.stopPrank;
 
-        vm.startPrank(ap);
-        WETH.approve(address(issuer), 1e15 * 10 ** 18);
-        uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
-        vm.stopPrank;
+    //     vm.startPrank(ap);
+    //     WETH.approve(address(issuer), 1e15 * 10 ** 18);
+    //     uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
+    //     vm.stopPrank;
 
-        // Remove tokens from the issuer contract to simulate insufficient balance
-        vm.startPrank(owner);
-        address tokenAddress = vm.parseAddress(orderInfo.order.inTokenset[0].addr);
-        uint256 issuerBalance = IERC20(tokenAddress).balanceOf(address(issuer));
-        vm.stopPrank;
-        vm.startPrank(address(issuer));
-        IERC20(tokenAddress).transfer(owner, issuerBalance);
-        vm.stopPrank;
+    //     // Remove tokens from the issuer contract to simulate insufficient balance
+    //     vm.startPrank(owner);
+    //     address tokenAddress = vm.parseAddress(orderInfo.order.inTokenset[0].addr);
+    //     uint256 issuerBalance = IERC20(tokenAddress).balanceOf(address(issuer));
+    //     vm.stopPrank;
+    //     vm.startPrank(address(issuer));
+    //     IERC20(tokenAddress).transfer(owner, issuerBalance);
+    //     vm.stopPrank;
 
-        // Attempt to cancel the request, should fail
-        vm.warp(block.timestamp + 1 days);
-        vm.startPrank(ap);
-        vm.expectRevert("not enough balance");
-        issuer.cancelMintRequest(nonce, orderInfo, false);
-        vm.stopPrank;
-    }
+    //     // Attempt to cancel the request, should fail
+    //     vm.warp(block.timestamp + 1 days);
+    //     vm.startPrank(ap);
+    //     vm.expectRevert("not enough balance");
+    //     issuer.cancelMintRequest(nonce, orderInfo, false);
+    //     vm.stopPrank;
+    // }
 
     // Test insufficient balance error in rejectMintRequest function
     function test_RejectMintRequestInsufficientBalance() public {
@@ -2065,10 +2072,12 @@ contract AssetIssuerTest is Test {
         uint256 nonce = issuer.addMintRequest(assetID, orderInfo, 10000);
         vm.stopPrank;
 
-        // Force-cancel mint request to make ap have claimable tokens
-        vm.startPrank(ap);
-        vm.warp(block.timestamp + 1 days);
-        issuer.cancelMintRequest(nonce, orderInfo, true);
+        // reject mint request to make ap have claimable tokens
+        vm.startPrank(pmm);
+        swap.makerRejectSwapRequest(orderInfo);
+        vm.stopPrank();
+        vm.startPrank(owner);
+        issuer.rejectMintRequest(nonce, orderInfo, true);
         vm.stopPrank;
 
         // Get the claimable amount

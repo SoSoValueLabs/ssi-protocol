@@ -16,12 +16,15 @@ contract SwapTest is Test {
     Swap swap;
 
     function setUp() public {
+        string memory rpcUrl = vm.envString("RPC_URL");
+        vm.createSelectFork(rpcUrl);
+        vm.rollFork(30743020);
         swap = Swap(0xF909bfa750721501B4F8433588FaE5cE303Db08B);
         assetIssuer = AssetIssuer(0x0306acEb4c20FF33480d90038F8b375cC6A6b66e);
-        // vm.startPrank(owner);
-        // swap.upgradeToAndCall(address(new Swap()), "");
-        // assetIssuer.upgradeToAndCall(address(new AssetIssuer()), "");
-        // vm.stopPrank();
+        vm.startPrank(owner);
+        swap.upgradeToAndCall(address(new Swap()), "");
+        assetIssuer.upgradeToAndCall(address(new AssetIssuer()), "");
+        vm.stopPrank();
     }
 
     function test_forceCancelAndReject() public {

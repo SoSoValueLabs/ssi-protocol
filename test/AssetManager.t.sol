@@ -900,69 +900,69 @@ contract FundManagerTest is Test {
         assertEq(swap.getWhiteListTokens().length, beforeLength - 1);
     }
 
-    function test_cancelMint() public {
-        address assetTokenAddress = createAssetToken();
-        OrderInfo memory orderInfo = pmmQuoteMint();
-        IERC20 inToken = IERC20(vm.parseAddress(orderInfo.order.inTokenset[0].addr));
-        (uint nonce, uint amountBeforeMint) = apAddMintRequest(assetTokenAddress, orderInfo);
-        Request memory mintRequest = issuer.getMintRequest(nonce);
-        vm.expectRevert();
-        issuer.cancelMintRequest(nonce, orderInfo, false);
-        vm.startPrank(ap);
-        vm.expectRevert();
-        issuer.cancelMintRequest(nonce, orderInfo, false);
-        vm.warp(block.timestamp + 1 days);
-        issuer.cancelMintRequest(nonce, orderInfo, false);
-        vm.stopPrank();
-        assertEq(inToken.balanceOf(ap), amountBeforeMint);
-        assertTrue(issuer.getMintRequest(nonce).status == RequestStatus.CANCEL);
-        assertTrue(swap.getSwapRequest(mintRequest.orderHash).status == SwapRequestStatus.CANCEL);
-    }
+    // function test_cancelMint() public {
+    //     address assetTokenAddress = createAssetToken();
+    //     OrderInfo memory orderInfo = pmmQuoteMint();
+    //     IERC20 inToken = IERC20(vm.parseAddress(orderInfo.order.inTokenset[0].addr));
+    //     (uint nonce, uint amountBeforeMint) = apAddMintRequest(assetTokenAddress, orderInfo);
+    //     Request memory mintRequest = issuer.getMintRequest(nonce);
+    //     vm.expectRevert();
+    //     issuer.cancelMintRequest(nonce, orderInfo, false);
+    //     vm.startPrank(ap);
+    //     vm.expectRevert();
+    //     issuer.cancelMintRequest(nonce, orderInfo, false);
+    //     vm.warp(block.timestamp + 1 days);
+    //     issuer.cancelMintRequest(nonce, orderInfo, false);
+    //     vm.stopPrank();
+    //     assertEq(inToken.balanceOf(ap), amountBeforeMint);
+    //     assertTrue(issuer.getMintRequest(nonce).status == RequestStatus.CANCEL);
+    //     assertTrue(swap.getSwapRequest(mintRequest.orderHash).status == SwapRequestStatus.CANCEL);
+    // }
 
-    function test_forceCancelMint() public {
-        address assetTokenAddress = createAssetToken();
-        OrderInfo memory orderInfo = pmmQuoteMint();
-        MockToken inToken = MockToken(vm.parseAddress(orderInfo.order.inTokenset[0].addr));
-        (uint nonce, uint amountBeforeMint) = apAddMintRequest(assetTokenAddress, orderInfo);
-        uint amountAfterMint = inToken.balanceOf(ap);
-        Request memory mintRequest = issuer.getMintRequest(nonce);
-        inToken.blockAccount(ap, true);
-        vm.warp(block.timestamp + 1 days);
-        vm.startPrank(ap);
-        vm.expectRevert();
-        issuer.cancelMintRequest(nonce, orderInfo, false);
-        issuer.cancelMintRequest(nonce, orderInfo, true);
-        vm.stopPrank();
-        assertEq(inToken.balanceOf(ap), amountAfterMint);
-        assertTrue(issuer.getMintRequest(nonce).status == RequestStatus.CANCEL);
-        assertTrue(swap.getSwapRequest(mintRequest.orderHash).status == SwapRequestStatus.CANCEL);
-        address[] memory withdrawTokens = new address[](1);
-        withdrawTokens[0] = address(inToken);
-        vm.startPrank(owner);
-        issuer.withdraw(withdrawTokens);
-        vm.stopPrank();
-        inToken.blockAccount(ap, false);
-        vm.startPrank(ap);
-        issuer.claim(address(inToken));
-        vm.stopPrank();
-        assertEq(inToken.balanceOf(ap), amountBeforeMint);
-    }
+    // function test_forceCancelMint() public {
+    //     address assetTokenAddress = createAssetToken();
+    //     OrderInfo memory orderInfo = pmmQuoteMint();
+    //     MockToken inToken = MockToken(vm.parseAddress(orderInfo.order.inTokenset[0].addr));
+    //     (uint nonce, uint amountBeforeMint) = apAddMintRequest(assetTokenAddress, orderInfo);
+    //     uint amountAfterMint = inToken.balanceOf(ap);
+    //     Request memory mintRequest = issuer.getMintRequest(nonce);
+    //     inToken.blockAccount(ap, true);
+    //     vm.warp(block.timestamp + 1 days);
+    //     vm.startPrank(ap);
+    //     vm.expectRevert();
+    //     issuer.cancelMintRequest(nonce, orderInfo, false);
+    //     issuer.cancelMintRequest(nonce, orderInfo, true);
+    //     vm.stopPrank();
+    //     assertEq(inToken.balanceOf(ap), amountAfterMint);
+    //     assertTrue(issuer.getMintRequest(nonce).status == RequestStatus.CANCEL);
+    //     assertTrue(swap.getSwapRequest(mintRequest.orderHash).status == SwapRequestStatus.CANCEL);
+    //     address[] memory withdrawTokens = new address[](1);
+    //     withdrawTokens[0] = address(inToken);
+    //     vm.startPrank(owner);
+    //     issuer.withdraw(withdrawTokens);
+    //     vm.stopPrank();
+    //     inToken.blockAccount(ap, false);
+    //     vm.startPrank(ap);
+    //     issuer.claim(address(inToken));
+    //     vm.stopPrank();
+    //     assertEq(inToken.balanceOf(ap), amountBeforeMint);
+    // }
 
-    function test_cancelRedeem() public {
-        address assetTokenAddress = test_Mint();
-        OrderInfo memory orderInfo = pmmQuoteRedeem();
-        (uint nonce, uint amountBeforeRedeem) = apAddRedeemRequest(assetTokenAddress, orderInfo);
-        Request memory redeemRequest = issuer.getRedeemRequest(nonce);
-        vm.expectRevert();
-        issuer.cancelRedeemRequest(nonce, orderInfo);
-        vm.startPrank(ap);
-        vm.expectRevert();
-        issuer.cancelRedeemRequest(nonce, orderInfo);
-        vm.warp(block.timestamp + 1 days);
-        issuer.cancelRedeemRequest(nonce, orderInfo);
-        vm.stopPrank();
-        assertEq(IERC20(assetTokenAddress).balanceOf(ap), amountBeforeRedeem);
-        assertTrue(issuer.getRedeemRequest(nonce).status == RequestStatus.CANCEL);
-        assertTrue(swap.getSwapRequest(redeemRequest.orderHash).status == SwapRequestStatus.CANCEL);
-    }
+    // function test_cancelRedeem() public {
+    //     address assetTokenAddress = test_Mint();
+    //     OrderInfo memory orderInfo = pmmQuoteRedeem();
+    //     (uint nonce, uint amountBeforeRedeem) = apAddRedeemRequest(assetTokenAddress, orderInfo);
+    //     Request memory redeemRequest = issuer.getRedeemRequest(nonce);
+    //     vm.expectRevert();
+    //     issuer.cancelRedeemRequest(nonce, orderInfo);
+    //     vm.startPrank(ap);
+    //     vm.expectRevert();
+    //     issuer.cancelRedeemRequest(nonce, orderInfo);
+    //     vm.warp(block.timestamp + 1 days);
+    //     issuer.cancelRedeemRequest(nonce, orderInfo);
+    //     vm.stopPrank();
+    //     assertEq(IERC20(assetTokenAddress).balanceOf(ap), amountBeforeRedeem);
+    //     assertTrue(issuer.getRedeemRequest(nonce).status == RequestStatus.CANCEL);
+    //     assertTrue(swap.getSwapRequest(redeemRequest.orderHash).status == SwapRequestStatus.CANCEL);
+    // }
 }
