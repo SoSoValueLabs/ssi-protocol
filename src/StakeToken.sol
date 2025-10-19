@@ -28,6 +28,8 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
     event Withdraw(address withdrawer, uint256 amount);
     event SetCooldown(uint48 oldCooldown, uint48 cooldown);
 
+    uint8 public constant NATIVE_TOKEN_DECIMALS = 18;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -44,7 +46,6 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
         __Ownable_init(owner_);
         __UUPSUpgradeable_init();
         __Pausable_init();
-        require(token_ != address(0), "token address is zero");
         require(cooldown_ < MAX_COOLDOWN, "cooldown exceeds MAX_COOLDOWN");
         token = token_;
         cooldown = cooldown_;
@@ -61,13 +62,21 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
     }
 
     function decimals() public view override(ERC20Upgradeable) returns (uint8) {
+        if (token == address(0)) {
+            return NATIVE_TOKEN_DECIMALS;
+        }
         return ERC20Upgradeable(token).decimals();
     }
 
-    function stake(uint256 amount) external whenNotPaused {
+    function stake(uint256 amount) external payable whenNotPaused {
         require(amount > 0, "amount is zero");
-        require(IERC20(token).allowance(msg.sender, address(this)) >= amount, "not enough allowance");
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        if (token == address(0)) {
+            require(msg.value == amount, "value must equal amount");
+        } else {
+            require(msg.value == 0, "value must be zero for ERC20");
+            require(IERC20(token).allowance(msg.sender, address(this)) >= amount, "not enough allowance");
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        }
         _mint(msg.sender, amount);
         emit Stake(msg.sender, amount);
     }
@@ -88,7 +97,12 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
         require(cooldownInfo.cooldownAmount >= amount, "not enough cooldown amount");
         require(cooldownInfo.cooldownEndTimestamp <= block.timestamp, "cooldowning");
         cooldownInfo.cooldownAmount -= amount;
-        IERC20(token).safeTransfer(msg.sender, amount);
+        if (token == address(0)) {
+            (bool success,) = msg.sender.call{value: amount}("");
+            require(success, "Failed to send native token");
+        } else {
+            IERC20(token).safeTransfer(msg.sender, amount);
+        }
         emit Withdraw(msg.sender, amount);
     }
 
