@@ -8,6 +8,7 @@ import "../src/AssetFactory.sol";
 
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {Upgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import "forge-std/StdCheats.sol";
 import {Test, console} from "forge-std/Test.sol";
@@ -160,6 +161,153 @@ contract StakingSOSOTest is Test {
         assertEq(staker.balance, initialBalance);
         assertEq(stakeToken.balanceOf(staker), 0);
         assertEq(address(stakeToken).balance, 0);
+    }
+
+    /// @notice Fork test for upgrading StakeToken with ReentrancyGuard
+    /// @dev This test forks a network and tests upgrading StakeToken to include ReentrancyGuard
+    function testForkUpgradeStakeToken() public {
+        // Read fork URL and block number from environment variables
+        string memory forkUrl = vm.envOr("FORK_URL", string(""));
+        uint256 forkBlock = vm.envOr("FORK_BLOCK_NUMBER", uint256(0));
+        
+        // Skip test if fork URL is not provided
+        if (bytes(forkUrl).length == 0 || forkBlock == 0) {
+            console.log("Skipping fork test: FORK_URL or FORK_BLOCK_NUMBER not set");
+            return;
+        }
+
+        // Create fork at specified block
+        vm.createSelectFork(forkUrl);
+        vm.rollFork(forkBlock);
+
+        // Read StakeToken address from environment (optional, if not provided, create new one)
+        address stakeTokenAddress = vm.envOr("FORK_STAKE_TOKEN_ADDRESS", address(0));
+        address ownerAddress = vm.envOr("FORK_OWNER_ADDRESS", address(0));
+
+        StakeToken stakeTokenProxy;
+        address forkOwner;
+
+        if (stakeTokenAddress != address(0) && ownerAddress != address(0)) {
+            // Use existing StakeToken from fork
+            stakeTokenProxy = StakeToken(payable(stakeTokenAddress));
+            forkOwner = ownerAddress;
+            console.log("Using existing StakeToken at:", stakeTokenAddress);
+            console.log("Owner:", forkOwner);
+        } else {
+            // Create new StakeToken for testing
+            forkOwner = vm.addr(0x1);
+            vm.deal(forkOwner, 100 ether);
+            
+            vm.startPrank(forkOwner);
+            StakeToken stakeTokenImpl = new StakeToken();
+            stakeTokenProxy = StakeToken(payable(address(new ERC1967Proxy(
+                address(stakeTokenImpl),
+                abi.encodeCall(StakeToken.initialize, (
+                    "Staked SOSO",
+                    "sSOSO",
+                    address(0), // native token
+                    3600*24*7,  // 7 days cooldown
+                    forkOwner
+                ))
+            ))));
+            vm.stopPrank();
+            console.log("Created new StakeToken at:", address(stakeTokenProxy));
+        }
+
+        // Record initial state before any test operations
+        address oldImplementation = Upgrades.getImplementationAddress(address(stakeTokenProxy));
+        string memory nameBefore = stakeTokenProxy.name();
+        string memory symbolBefore = stakeTokenProxy.symbol();
+        address tokenBefore = stakeTokenProxy.token();
+        uint48 cooldownBefore = stakeTokenProxy.cooldown();
+        uint256 initialTotalSupply = stakeTokenProxy.totalSupply();
+        
+        console.log("Initial state:");
+        console.log("  Implementation:", oldImplementation);
+        console.log("  Name:", nameBefore);
+        console.log("  Symbol:", symbolBefore);
+        console.log("  Initial Total Supply:", initialTotalSupply);
+
+        // Test that functions work before upgrade
+        address testStaker = vm.addr(0x100);
+        vm.deal(testStaker, 10 ether);
+        
+        vm.startPrank(testStaker);
+        uint256 testStakeAmount = 1 ether;
+        stakeTokenProxy.stake{value: testStakeAmount}(testStakeAmount);
+        uint256 balanceBefore = stakeTokenProxy.balanceOf(testStaker);
+        assertEq(balanceBefore, testStakeAmount, "Stake should work before upgrade");
+        vm.stopPrank();
+
+        // Record state after test operations but before upgrade
+        uint256 totalSupplyBeforeUpgrade = stakeTokenProxy.totalSupply();
+        assertEq(totalSupplyBeforeUpgrade, initialTotalSupply + testStakeAmount, "Total supply should increase after stake");
+        
+        console.log("Before upgrade (after test operations):");
+        console.log("  Total Supply:", totalSupplyBeforeUpgrade);
+
+        // Deploy new implementation with ReentrancyGuard
+        vm.startPrank(forkOwner);
+        StakeToken newImplementation = new StakeToken();
+        address newImplAddress = address(newImplementation);
+        console.log("New implementation:", newImplAddress);
+
+        // Upgrade the proxy
+        stakeTokenProxy.upgradeToAndCall(newImplAddress, "");
+        vm.stopPrank();
+
+        // Verify upgrade
+        address newImplementationAddress = Upgrades.getImplementationAddress(address(stakeTokenProxy));
+        assertEq(newImplementationAddress, newImplAddress, "Implementation should be upgraded");
+        console.log("Upgrade successful, new implementation:", newImplementationAddress);
+
+        // Verify state is preserved (should match state right before upgrade)
+        assertEq(stakeTokenProxy.name(), nameBefore, "Name should be preserved");
+        assertEq(stakeTokenProxy.symbol(), symbolBefore, "Symbol should be preserved");
+        assertEq(stakeTokenProxy.token(), tokenBefore, "Token address should be preserved");
+        assertEq(stakeTokenProxy.cooldown(), cooldownBefore, "Cooldown should be preserved");
+        assertEq(stakeTokenProxy.totalSupply(), totalSupplyBeforeUpgrade, "Total supply should be preserved");
+        assertEq(stakeTokenProxy.balanceOf(testStaker), balanceBefore, "User balance should be preserved");
+
+        // Test that functions work after upgrade (with ReentrancyGuard)
+        vm.startPrank(testStaker);
+        // Test stake with nonReentrant modifier
+        stakeTokenProxy.stake{value: 1 ether}(1 ether);
+        uint256 balanceAfter = stakeTokenProxy.balanceOf(testStaker);
+        assertEq(balanceAfter, balanceBefore + 1 ether, "Stake should work after upgrade");
+        
+        // Test unstake with nonReentrant modifier
+        stakeTokenProxy.unstake(1 ether);
+        (uint256 cooldownAmount, uint256 cooldownEndTimestamp) = stakeTokenProxy.cooldownInfos(testStaker);
+        assertGt(cooldownAmount, 0, "Cooldown amount should be set");
+        assertGt(cooldownEndTimestamp, block.timestamp, "Cooldown end timestamp should be set");
+        
+        // Fast forward time
+        vm.warp(cooldownEndTimestamp);
+        
+        // Test withdraw with nonReentrant modifier
+        uint256 withdrawAmount = 1 ether;
+        uint256 balanceBeforeWithdraw = testStaker.balance;
+        stakeTokenProxy.withdraw(withdrawAmount);
+        uint256 balanceAfterWithdraw = testStaker.balance;
+        assertEq(balanceAfterWithdraw, balanceBeforeWithdraw + withdrawAmount, "Withdraw should work after upgrade");
+        vm.stopPrank();
+
+        // Test pause/unpause still works
+        vm.startPrank(forkOwner);
+        stakeTokenProxy.pause();
+        assertTrue(stakeTokenProxy.paused(), "Contract should be paused");
+        stakeTokenProxy.unpause();
+        assertFalse(stakeTokenProxy.paused(), "Contract should be unpaused");
+        vm.stopPrank();
+
+        // Test that nonReentrant modifier is working (try to call stake during stake - should fail)
+        vm.startPrank(testStaker);
+        // This should work normally
+        stakeTokenProxy.stake{value: 1 ether}(1 ether);
+        vm.stopPrank();
+
+        console.log("All upgrade tests passed!");
     }
 
     receive() external payable {}

@@ -7,9 +7,10 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
 // import "forge-std/console.sol";
 
-contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable {
+contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable, ReentrancyGuardTransientUpgradeable {
     using SafeERC20 for IERC20;
 
     address public token;
@@ -46,6 +47,7 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
         __Ownable_init(owner_);
         __UUPSUpgradeable_init();
         __Pausable_init();
+        __ReentrancyGuardTransient_init();
         require(cooldown_ < MAX_COOLDOWN, "cooldown exceeds MAX_COOLDOWN");
         token = token_;
         cooldown = cooldown_;
@@ -68,7 +70,7 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
         return ERC20Upgradeable(token).decimals();
     }
 
-    function stake(uint256 amount) external payable whenNotPaused {
+    function stake(uint256 amount) external payable whenNotPaused nonReentrant {
         require(amount > 0, "amount is zero");
         if (token == address(0)) {
             require(msg.value == amount, "value must equal amount");
@@ -81,7 +83,7 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
         emit Stake(msg.sender, amount);
     }
 
-    function unstake(uint256 amount) external whenNotPaused {
+    function unstake(uint256 amount) external whenNotPaused nonReentrant {
         require(amount > 0, "amount is zero");
         CooldownInfo storage cooldownInfo = cooldownInfos[msg.sender];
         require(amount <= balanceOf(msg.sender), "not enough to unstake");
@@ -91,7 +93,7 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
         emit UnStake(msg.sender, amount);
     }
 
-    function withdraw(uint256 amount) external whenNotPaused {
+    function withdraw(uint256 amount) external whenNotPaused nonReentrant {
         require(amount > 0, "amount is zero");
         CooldownInfo storage cooldownInfo = cooldownInfos[msg.sender];
         require(cooldownInfo.cooldownAmount >= amount, "not enough cooldown amount");
