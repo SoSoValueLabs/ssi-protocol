@@ -8,6 +8,8 @@ ast = true
 build_info = true
 extra_output = ["storageLayout"]
 via_ir = true
+optimizer = true
+optimizer_runs = 200
 ffi = true
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 remappings = [

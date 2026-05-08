@@ -98,9 +98,10 @@ contract StakingSOSOTest is Test {
         uint256 unstakeAmount = stakeAmount * 50 / 100;
         stakeToken.unstake(unstakeAmount);
         vm.stopPrank();
+        uint256 ts = block.timestamp;
         (uint256 cooldownAmount, uint256 cooldownEndTimestamp) = stakeToken.cooldownInfos(staker);
         assertEq(cooldownAmount, unstakeAmount);
-        assertEq(cooldownEndTimestamp, block.timestamp + stakeToken.cooldown());
+        assertEq(cooldownEndTimestamp, ts + stakeToken.cooldown());
         // 检查余额
         assertEq(stakeToken.balanceOf(staker), stakeAmount - unstakeAmount);
         assertEq(stakeToken.totalSupply(), stakeAmount - unstakeAmount);
@@ -111,7 +112,8 @@ contract StakingSOSOTest is Test {
         vm.expectRevert("cooldowning");
         stakeToken.withdraw(cooldownAmount);
         vm.stopPrank();
-        vm.warp(block.timestamp + stakeToken.cooldown());
+        ts += stakeToken.cooldown();
+        vm.warp(ts);
 
         // 更新cooldown时长
         vm.startPrank(owner);
@@ -135,12 +137,14 @@ contract StakingSOSOTest is Test {
         stakeToken.unstake(unstakeAmount);
         vm.stopPrank();
         // 7天后尝试提取，应该失败（因为cooldown现在是14天）
-        vm.warp(block.timestamp + 3600*24*7);
+        ts += 3600*24*7;
+        vm.warp(ts);
         vm.expectRevert("cooldowning");
         vm.prank(staker);
         stakeToken.withdraw(unstakeAmount);
         // 再过7天后提取成功
-        vm.warp(block.timestamp + 3600*24*7);
+        ts += 3600*24*7;
+        vm.warp(ts);
         vm.startPrank(staker);
         stakeToken.withdraw(unstakeAmount);
         vm.stopPrank();
@@ -153,7 +157,8 @@ contract StakingSOSOTest is Test {
         // 完整取出所有资金
         vm.startPrank(staker);
         stakeToken.unstake(remainingStaked);
-        vm.warp(block.timestamp + stakeToken.cooldown());
+        ts += stakeToken.cooldown();
+        vm.warp(ts);
         stakeToken.withdraw(remainingStaked);
         vm.stopPrank();
 
@@ -215,15 +220,14 @@ contract StakingSOSOTest is Test {
         }
 
         // Record initial state before any test operations
-        address oldImplementation = Upgrades.getImplementationAddress(address(stakeTokenProxy));
         string memory nameBefore = stakeTokenProxy.name();
         string memory symbolBefore = stakeTokenProxy.symbol();
         address tokenBefore = stakeTokenProxy.token();
         uint48 cooldownBefore = stakeTokenProxy.cooldown();
         uint256 initialTotalSupply = stakeTokenProxy.totalSupply();
-        
+
         console.log("Initial state:");
-        console.log("  Implementation:", oldImplementation);
+        console.log("  Implementation:", Upgrades.getImplementationAddress(address(stakeTokenProxy)));
         console.log("  Name:", nameBefore);
         console.log("  Symbol:", symbolBefore);
         console.log("  Initial Total Supply:", initialTotalSupply);
@@ -231,66 +235,59 @@ contract StakingSOSOTest is Test {
         // Test that functions work before upgrade
         address testStaker = vm.addr(0x100);
         vm.deal(testStaker, 10 ether);
-        
+
         vm.startPrank(testStaker);
-        uint256 testStakeAmount = 1 ether;
-        stakeTokenProxy.stake{value: testStakeAmount}(testStakeAmount);
-        uint256 balanceBefore = stakeTokenProxy.balanceOf(testStaker);
-        assertEq(balanceBefore, testStakeAmount, "Stake should work before upgrade");
+        stakeTokenProxy.stake{value: 1 ether}(1 ether);
+        assertEq(stakeTokenProxy.balanceOf(testStaker), 1 ether, "Stake should work before upgrade");
         vm.stopPrank();
 
         // Record state after test operations but before upgrade
         uint256 totalSupplyBeforeUpgrade = stakeTokenProxy.totalSupply();
-        assertEq(totalSupplyBeforeUpgrade, initialTotalSupply + testStakeAmount, "Total supply should increase after stake");
-        
+        assertEq(totalSupplyBeforeUpgrade, initialTotalSupply + 1 ether, "Total supply should increase after stake");
+
         console.log("Before upgrade (after test operations):");
         console.log("  Total Supply:", totalSupplyBeforeUpgrade);
 
-        // Deploy new implementation with ReentrancyGuard
-        vm.startPrank(forkOwner);
-        StakeToken newImplementation = new StakeToken();
-        address newImplAddress = address(newImplementation);
-        console.log("New implementation:", newImplAddress);
+        // Deploy new implementation and upgrade
+        {
+            vm.startPrank(forkOwner);
+            StakeToken newImplementation = new StakeToken();
+            address newImplAddress = address(newImplementation);
+            console.log("New implementation:", newImplAddress);
+            stakeTokenProxy.upgradeToAndCall(newImplAddress, "");
+            vm.stopPrank();
 
-        // Upgrade the proxy
-        stakeTokenProxy.upgradeToAndCall(newImplAddress, "");
-        vm.stopPrank();
+            address newImplementationAddress = Upgrades.getImplementationAddress(address(stakeTokenProxy));
+            assertEq(newImplementationAddress, newImplAddress, "Implementation should be upgraded");
+            console.log("Upgrade successful, new implementation:", newImplementationAddress);
+        }
 
-        // Verify upgrade
-        address newImplementationAddress = Upgrades.getImplementationAddress(address(stakeTokenProxy));
-        assertEq(newImplementationAddress, newImplAddress, "Implementation should be upgraded");
-        console.log("Upgrade successful, new implementation:", newImplementationAddress);
-
-        // Verify state is preserved (should match state right before upgrade)
+        // Verify state is preserved
         assertEq(stakeTokenProxy.name(), nameBefore, "Name should be preserved");
         assertEq(stakeTokenProxy.symbol(), symbolBefore, "Symbol should be preserved");
         assertEq(stakeTokenProxy.token(), tokenBefore, "Token address should be preserved");
         assertEq(stakeTokenProxy.cooldown(), cooldownBefore, "Cooldown should be preserved");
         assertEq(stakeTokenProxy.totalSupply(), totalSupplyBeforeUpgrade, "Total supply should be preserved");
-        assertEq(stakeTokenProxy.balanceOf(testStaker), balanceBefore, "User balance should be preserved");
+        assertEq(stakeTokenProxy.balanceOf(testStaker), 1 ether, "User balance should be preserved");
 
         // Test that functions work after upgrade (with ReentrancyGuard)
         vm.startPrank(testStaker);
-        // Test stake with nonReentrant modifier
         stakeTokenProxy.stake{value: 1 ether}(1 ether);
-        uint256 balanceAfter = stakeTokenProxy.balanceOf(testStaker);
-        assertEq(balanceAfter, balanceBefore + 1 ether, "Stake should work after upgrade");
-        
-        // Test unstake with nonReentrant modifier
+        assertEq(stakeTokenProxy.balanceOf(testStaker), 2 ether, "Stake should work after upgrade");
+
         stakeTokenProxy.unstake(1 ether);
-        (uint256 cooldownAmount, uint256 cooldownEndTimestamp) = stakeTokenProxy.cooldownInfos(testStaker);
-        assertGt(cooldownAmount, 0, "Cooldown amount should be set");
-        assertGt(cooldownEndTimestamp, block.timestamp, "Cooldown end timestamp should be set");
-        
-        // Fast forward time
-        vm.warp(cooldownEndTimestamp);
-        
-        // Test withdraw with nonReentrant modifier
-        uint256 withdrawAmount = 1 ether;
-        uint256 balanceBeforeWithdraw = testStaker.balance;
-        stakeTokenProxy.withdraw(withdrawAmount);
-        uint256 balanceAfterWithdraw = testStaker.balance;
-        assertEq(balanceAfterWithdraw, balanceBeforeWithdraw + withdrawAmount, "Withdraw should work after upgrade");
+        {
+            (uint256 cooldownAmount, uint256 cooldownEndTimestamp) = stakeTokenProxy.cooldownInfos(testStaker);
+            assertGt(cooldownAmount, 0, "Cooldown amount should be set");
+            assertGt(cooldownEndTimestamp, block.timestamp, "Cooldown end timestamp should be set");
+            vm.warp(cooldownEndTimestamp);
+        }
+
+        {
+            uint256 balanceBeforeWithdraw = testStaker.balance;
+            stakeTokenProxy.withdraw(1 ether);
+            assertEq(testStaker.balance, balanceBeforeWithdraw + 1 ether, "Withdraw should work after upgrade");
+        }
         vm.stopPrank();
 
         // Test pause/unpause still works
@@ -301,9 +298,7 @@ contract StakingSOSOTest is Test {
         assertFalse(stakeTokenProxy.paused(), "Contract should be unpaused");
         vm.stopPrank();
 
-        // Test that nonReentrant modifier is working (try to call stake during stake - should fail)
         vm.startPrank(testStaker);
-        // This should work normally
         stakeTokenProxy.stake{value: 1 ether}(1 ether);
         vm.stopPrank();
 
