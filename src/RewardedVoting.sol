@@ -15,11 +15,17 @@ import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgra
 
 /// @title RewardedVoting
 /// @notice A paid proposal + token-weighted voting system with voter rewards.
+///         All fee rates, durations, thresholds and token addresses are configurable
+///         at initialization via `VotingConfig` and readable via `getVotingConfig()`.
 /// @dev
 /// Workflow:
-/// - Proposer deposits `payToken` to create a proposal (directly or via EIP-712 + `permit`).
-/// - Voters lock `votingToken` voting power for a fixed duration and vote approve/reject (directly or via EIP-712).
-/// - After voting ends, anyone can resolve: distributes fees and refunds depending on outcome.
+/// - Proposer deposits `payToken` (≥ `minPayAmount`) to create a proposal (directly or via EIP-712 + `permit`).
+/// - Voters lock `votingToken` voting power for `voteLockDuration` and vote approve/reject (directly or via EIP-712).
+/// - After `votingDuration` elapses, anyone can resolve: distributes fees and refunds depending on outcome.
+///   - Approved (totalVotes ≥ `minVoteAmount` AND approve ratio ≥ `minApproveRatio`):
+///     `voterFeeBps` → voter reward pool, `protocolFeeBps` → treasury, remainder → airdropPool.
+///   - Rejected with votes: voter reward = min(`voterFeeBps` share, `maxVoterRewardIfRejected`), rest refunded to proposer.
+///   - No votes: full refund to proposer.
 /// - Voters can claim a pro-rata share of the voter-reward pool after resolution.
 ///
 /// Security notes:
@@ -37,22 +43,35 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     /// @dev EIP-712 typehash for `voteFor`.
     bytes32 public constant VOTE_TYPE_HASH = keccak256("Vote(uint256 proposalId,uint256 amount,bool support,uint256 nonce,uint256 deadline)");
 
-    /// @notice Configuration parameters for initializing the voting contract.
+    /// @notice Configuration parameters set at initialization and immutable thereafter.
+    /// @dev All amount fields (`minVoteAmount`, `minPayAmount`, `maxVoterRewardIfRejected`)
+    ///      are stored in full decimals (i.e. already scaled by `10 ** token.decimals()`).
     struct VotingConfig {
+        /// @notice Token used to measure and lock voting power (must implement `ILockable`).
         address votingToken;
+        /// @notice Token deposited by proposers and used for rewards/refunds.
         address payToken;
+        /// @notice Basis points charged from `payAmount` and reserved for voter rewards.
         uint256 voterFeeBps;
+        /// @notice Basis points charged from `payAmount` and sent to `treasury` on approval.
         uint256 protocolFeeBps;
+        /// @notice Minimum approval ratio required to approve a proposal (in bps, e.g. 8000 = 80%).
         uint256 minApproveRatio;
+        /// @notice Voting window length in seconds for each proposal.
         uint256 votingDuration;
+        /// @notice Lock duration in seconds applied to voting power on each vote.
         uint256 voteLockDuration;
+        /// @notice Minimum total vote weight (full decimals) required for the approval path.
         uint256 minVoteAmount;
+        /// @notice Minimum amount of `payToken` (full decimals) required to create a proposal.
         uint256 minPayAmount;
+        /// @notice Maximum `payToken` voter reward (full decimals) if proposal is rejected.
         uint256 maxVoterRewardIfRejected;
     }
 
     /// @notice Lifecycle states of a proposal.
     enum ProposalState {
+        /// @notice Voting is not created, default value
         NonExistent,
         /// @notice Voting is open; votes can be cast and proposal can not be resolved yet.
         Voting,
@@ -64,13 +83,13 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
 
     /// @notice Proposal metadata and voting totals.
     struct Proposal {
-        /// @notice Proposal creator whose `payToken` deposit is pulled.
+        /// @notice Proposal creator whose `config.payToken` deposit is pulled.
         address proposer;
-        /// @notice Total deposited amount in `payToken`.
+        /// @notice Total deposited amount in `config.payToken`.
         uint256 payAmount;
         /// @notice Current state of the proposal.
         ProposalState state;
-        /// @notice Timestamp when voting ends (inclusive behavior defined by checks in `_vote/resolveProposal`).
+        /// @notice Timestamp (unix) when voting ends (`block.timestamp + config.votingDuration` at creation).
         uint256 votingEndTime;
         /// @notice Total approve vote weight accumulated.
         uint256 totalApproveWeight;
@@ -78,11 +97,11 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         uint256 totalRejectWeight;
         /// @notice Whether the proposal has been resolved and payouts/refunds executed.
         bool resolved;
-        /// @notice Voter reward pool in `payToken`, fixed when resolved (basis for per-voter `previewReward`).
+        /// @notice Voter reward pool in `config.payToken`, fixed when resolved (basis for per-voter `previewReward`).
         uint256 voterReward;
-        /// @notice Protocol/platform fee in `payToken` sent to `treasury` when approved; zero otherwise.
+        /// @notice Protocol/platform fee in `config.payToken` sent to `treasury` when approved; zero otherwise.
         uint256 protocolFee;
-        /// @notice Amount in `payToken` sent to `airdropPool` when approved (`payAmount - voterReward - protocolFee`); zero otherwise.
+        /// @notice Amount in `config.payToken` sent to `airdropPool` when approved (`payAmount - voterReward - protocolFee`); zero otherwise.
         uint256 airdropReward;
     }
 
@@ -106,7 +125,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         uint256[] votedProposalIds;
         /// @notice Ordered list of proposal ids for which the voter has claimed rewards.
         uint256[] claimedProposalIds;
-        /// @notice Cumulative rewards claimed by the voter across all proposals (in `payToken`).
+        /// @notice Cumulative rewards claimed by the voter across all proposals (in `config.payToken`).
         uint256 claimedReward;
     }
 
@@ -244,7 +263,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     }
 
     /// @dev Creates a proposal and transfers proposer deposit to this contract.
-    /// @param payAmount Amount of `payToken` to deposit.
+    ///      Reverts if `payAmount < config.minPayAmount`.
+    /// @param payAmount Amount of `config.payToken` to deposit (full decimals).
     /// @param proposalId Proposal id to create.
     /// @param proposer Proposal creator whose funds are pulled.
     function _createProposal(uint256 payAmount, uint256 proposalId, address proposer) internal {
@@ -272,8 +292,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         emit ProposalCreated(proposalId, proposer, payAmount);
     }
 
-    /// @notice Creates a proposal by transferring `payToken` from caller.
-    /// @param payAmount Amount of `payToken` to deposit.
+    /// @notice Creates a proposal by transferring `config.payToken` from caller.
+    /// @param payAmount Amount of `config.payToken` to deposit (full decimals).
     /// @param proposalId Proposal id to create.
     function createProposal(uint256 payAmount, uint256 proposalId) external nonReentrant whenNotPaused {
         _createProposal(payAmount, proposalId, msg.sender);
@@ -304,7 +324,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     /// @dev
     /// This call uses TWO signatures:
     /// - An EIP-712 signature (`signature`) authorizing the meta-transaction itself (checked by this contract).
-    /// - An ERC-2612 `permit` signature (passed as `v,r,s`) granting allowance for pulling `payToken`.
+    /// - An ERC-2612 `permit` signature (passed as `v,r,s`) granting allowance for pulling `config.payToken`.
     ///
     /// How to construct the EIP-712 call parameters:
     /// - Read `nonce = nonces(signer)` from this contract.
@@ -317,7 +337,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     /// Notes:
     /// - `signature` is NOT the same as permit signature; do not mix them.
     /// - `nonce` is consumed by this contract via `_useNonce(signer)` (independent from token permit nonces).
-    /// @param payAmount Amount of `payToken` to deposit.
+    /// @param payAmount Amount of `config.payToken` to deposit (full decimals).
     /// @param proposalId Proposal id to create.
     /// @param v Signature v of permit signature.
     /// @param r Signature r of permit signature.
@@ -331,7 +351,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         _createProposal(payAmount, proposalId, signer);
     }
 
-    /// @dev Casts (or adds to) a vote on a proposal, locking voting power for `_votingConfig.voteLockDuration`.
+    /// @dev Casts (or adds to) a vote on a proposal, locking voting power for `config.voteLockDuration`.
     function _vote(uint256 proposalId, uint256 amount, bool support, address voter) internal {
         Proposal storage proposal = proposals[proposalId];
         if (proposal.state != ProposalState.Voting) revert ProposalNotInVotingState(proposalId);
@@ -410,12 +430,13 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         _vote(proposalId, amount, support, signer);
     }
 
-    /// @notice Resolves a proposal after voting ends and executes payout/refund logic.
+    /// @notice Resolves a proposal after `config.votingDuration` elapses and executes payout/refund logic.
     /// @dev
-    /// - If no votes, proposal is rejected and proposer is fully refunded (`voterReward`/`protocolFee`/`airdropReward` all zero).
-    /// - Otherwise records `voterReward` (voter pool), and on approval also `protocolFee` and `airdropReward` matching transfers.
-    /// - If approval conditions are met, `protocolFee` goes to `treasury`, `airdropReward` to `airdropPool`.
-    /// - If rejected with votes, proposer is refunded minus `voterReward`; per-voter shares use stored `voterReward`.
+    /// - If no votes: rejected, proposer is fully refunded.
+    /// - If approved (totalVotes ≥ `config.minVoteAmount` AND approve ratio ≥ `config.minApproveRatio`):
+    ///   `config.voterFeeBps` → voter reward pool, `config.protocolFeeBps` → treasury, remainder → airdropPool.
+    /// - If rejected with votes: voter reward = min(`config.voterFeeBps` share, `config.maxVoterRewardIfRejected`),
+    ///   rest refunded to proposer.
     /// Anyone can call this after voting ends.
     /// @param proposalId Proposal id.
     function resolveProposal(uint256 proposalId) external nonReentrant whenNotPaused {
