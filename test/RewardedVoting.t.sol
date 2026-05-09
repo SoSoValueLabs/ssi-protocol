@@ -176,6 +176,47 @@ contract RewardedVotingTest is Test {
         );
     }
 
+    function testInitializeZeroVoterFeeBps() public {
+        RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
+        config.voterFeeBps = 0;
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "voterFeeBps must be > 0"));
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
+        );
+    }
+
+    function testInitializeExcessiveFeeBps() public {
+        RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
+        config.voterFeeBps = 5000;
+        config.protocolFeeBps = 5001;
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "total fee bps exceeds 100%"));
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
+        );
+    }
+
+    function testInitializeInvalidMinApproveRatio() public {
+        RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
+        config.minApproveRatio = 0;
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "minApproveRatio out of range"));
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
+        );
+
+        config.minApproveRatio = 10001;
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "minApproveRatio out of range"));
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
+        );
+    }
+
     // ========== Admin Tests ==========
 
     function testUpdateTreasury() public {
@@ -241,7 +282,7 @@ contract RewardedVotingTest is Test {
             uint256 p_payAmount,
             RewardedVoting.ProposalState p_state,
             uint256 p_votingEndTime,
-            ,,,,,
+            ,,,
         ) = voting.proposals(1);
 
         assertEq(p_proposer, proposer);
@@ -288,7 +329,7 @@ contract RewardedVotingTest is Test {
 
         _voteApprove(voter1, 1, voteAmount);
 
-        (,,,,uint256 totalApprove, uint256 totalReject,,,,) = voting.proposals(1);
+        (,,,,uint256 totalApprove, uint256 totalReject,,) = voting.proposals(1);
         assertEq(totalApprove, voteAmount);
         assertEq(totalReject, 0);
 
@@ -306,7 +347,7 @@ contract RewardedVotingTest is Test {
 
         _voteReject(voter1, 1, voteAmount);
 
-        (,,,,uint256 totalApprove, uint256 totalReject,,,,) = voting.proposals(1);
+        (,,,,uint256 totalApprove, uint256 totalReject,,) = voting.proposals(1);
         assertEq(totalApprove, 0);
         assertEq(totalReject, voteAmount);
 
@@ -357,7 +398,7 @@ contract RewardedVotingTest is Test {
         (, uint256 supportWeight,,,) = voting.votes(1, voter1);
         assertEq(supportWeight, vote1 + vote2);
 
-        (,,,,uint256 totalApprove,,,,, ) = voting.proposals(1);
+        (,,,,uint256 totalApprove,,,) = voting.proposals(1);
         assertEq(totalApprove, vote1 + vote2);
     }
 
@@ -369,7 +410,7 @@ contract RewardedVotingTest is Test {
         _voteApprove(voter2, 1, amount);
         _voteReject(voter3, 1, amount);
 
-        (,,,,uint256 totalApprove, uint256 totalReject,,,,) = voting.proposals(1);
+        (,,,,uint256 totalApprove, uint256 totalReject,,) = voting.proposals(1);
         assertEq(totalApprove, amount * 2);
         assertEq(totalReject, amount);
     }
@@ -400,7 +441,7 @@ contract RewardedVotingTest is Test {
 
         voting.resolveProposal(1);
 
-        (,,RewardedVoting.ProposalState state,,,,bool resolved, uint256 voterReward, uint256 protocolFee, uint256 airdropReward) = voting.proposals(1);
+        (,,RewardedVoting.ProposalState state,,,,bool resolved, RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
         assertTrue(state == RewardedVoting.ProposalState.Approved);
         assertTrue(resolved);
 
@@ -408,9 +449,9 @@ contract RewardedVotingTest is Test {
         uint256 expectedProtocolFee = PAY_AMOUNT * 2500 / 10000;
         uint256 expectedAirdrop = PAY_AMOUNT - expectedVoterReward - expectedProtocolFee;
 
-        assertEq(voterReward, expectedVoterReward);
-        assertEq(protocolFee, expectedProtocolFee);
-        assertEq(airdropReward, expectedAirdrop);
+        assertEq(dist.voterReward, expectedVoterReward);
+        assertEq(dist.protocolFee, expectedProtocolFee);
+        assertEq(dist.airdropReward, expectedAirdrop);
 
         assertEq(payToken.balanceOf(treasury), treasuryBefore + expectedProtocolFee);
         assertEq(payToken.balanceOf(airdropPool), airdropBefore + expectedAirdrop);
@@ -428,7 +469,7 @@ contract RewardedVotingTest is Test {
 
         voting.resolveProposal(1);
 
-        (,,RewardedVoting.ProposalState state,,,,bool resolved, uint256 voterReward, uint256 protocolFee, uint256 airdropReward) = voting.proposals(1);
+        (,,RewardedVoting.ProposalState state,,,,bool resolved, RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
         assertTrue(state == RewardedVoting.ProposalState.Rejected);
         assertTrue(resolved);
 
@@ -436,9 +477,9 @@ contract RewardedVotingTest is Test {
         uint256 rawVoterReward = PAY_AMOUNT * 500 / 10000;
         uint256 expectedVoterReward = rawVoterReward > rejectedCap ? rejectedCap : rawVoterReward;
 
-        assertEq(voterReward, expectedVoterReward);
-        assertEq(protocolFee, 0);
-        assertEq(airdropReward, 0);
+        assertEq(dist.voterReward, expectedVoterReward);
+        assertEq(dist.protocolFee, 0);
+        assertEq(dist.airdropReward, 0);
         assertEq(payToken.balanceOf(proposer), proposerBefore + PAY_AMOUNT - expectedVoterReward);
     }
 
@@ -454,7 +495,7 @@ contract RewardedVotingTest is Test {
 
         voting.resolveProposal(1);
 
-        (,,RewardedVoting.ProposalState state,,,,,,,) = voting.proposals(1);
+        (,,RewardedVoting.ProposalState state,,,,,) = voting.proposals(1);
         assertTrue(state == RewardedVoting.ProposalState.Rejected);
     }
 
@@ -466,10 +507,11 @@ contract RewardedVotingTest is Test {
 
         voting.resolveProposal(1);
 
-        (,,RewardedVoting.ProposalState state,,,,bool resolved, uint256 voterReward,,) = voting.proposals(1);
-        assertTrue(state == RewardedVoting.ProposalState.Rejected);
+        (,,RewardedVoting.ProposalState state,,,,bool resolved, RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        assertTrue(state == RewardedVoting.ProposalState.NoVotes);
         assertTrue(resolved);
-        assertEq(voterReward, 0);
+        assertEq(dist.voterReward, 0);
+        assertEq(dist.refund, PAY_AMOUNT);
         assertEq(payToken.balanceOf(proposer), proposerBefore + PAY_AMOUNT);
     }
 
@@ -498,11 +540,11 @@ contract RewardedVotingTest is Test {
 
         voting.resolveProposal(1);
 
-        (,,,,,,,uint256 voterReward,,) = voting.proposals(1);
+        (,,,,,,,RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
 
         uint256 rawReward = PAY_AMOUNT * 500 / 10000;
         uint256 cap = voting.getVotingConfig().maxVoterRewardIfRejected;
-        assertEq(voterReward, rawReward > cap ? cap : rawReward);
+        assertEq(dist.voterReward, rawReward > cap ? cap : rawReward);
     }
 
     function testResolveWhenPaused() public {
@@ -545,13 +587,13 @@ contract RewardedVotingTest is Test {
         _skipVotingPeriod();
         voting.resolveProposal(1);
 
-        (,,,,,,,uint256 voterRewardPool,,) = voting.proposals(1);
+        (,,,,,,,RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
 
         uint256 reward1 = voting.previewReward(1, voter1);
         uint256 reward2 = voting.previewReward(1, voter2);
 
-        assertEq(reward1, v1Amount * voterRewardPool / (v1Amount + v2Amount));
-        assertEq(reward2, v2Amount * voterRewardPool / (v1Amount + v2Amount));
+        assertEq(reward1, v1Amount * dist.voterReward / (v1Amount + v2Amount));
+        assertEq(reward2, v2Amount * dist.voterReward / (v1Amount + v2Amount));
 
         voting.claimRewardFor(1, voter1);
         voting.claimRewardFor(1, voter2);
@@ -596,8 +638,8 @@ contract RewardedVotingTest is Test {
         voting.resolveProposal(1);
 
         uint256 preview = voting.previewReward(1, voter1);
-        (,,,,,,,uint256 voterRewardPool,,) = voting.proposals(1);
-        assertEq(preview, voterRewardPool);
+        (,,,,,,,RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        assertEq(preview, dist.voterReward);
     }
 
     function testBatchClaimReward() public {
@@ -799,7 +841,7 @@ contract RewardedVotingTest is Test {
 
         voting.createProposalFor(payAmount, proposalId, pv, pr, ps, nonce, deadline, signature);
 
-        (address p_proposer,,RewardedVoting.ProposalState p_state,,,,,,,) = voting.proposals(proposalId);
+        (address p_proposer,,RewardedVoting.ProposalState p_state,,,,,) = voting.proposals(proposalId);
         assertEq(p_proposer, proposer);
         assertTrue(p_state == RewardedVoting.ProposalState.Voting);
     }
@@ -814,11 +856,11 @@ contract RewardedVotingTest is Test {
         _skipVotingPeriod();
         voting.resolveProposal(1);
 
-        (,,,,,,,uint256 voterReward, uint256 protocolFee, uint256 airdropReward) = voting.proposals(1);
+        (,,,,,,,RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
 
-        assertEq(voterReward, 50 * 1e18);
-        assertEq(protocolFee, 250 * 1e18);
-        assertEq(airdropReward, 700 * 1e18);
-        assertEq(voterReward + protocolFee + airdropReward, payAmount);
+        assertEq(dist.voterReward, 50 * 1e18);
+        assertEq(dist.protocolFee, 250 * 1e18);
+        assertEq(dist.airdropReward, 700 * 1e18);
+        assertEq(dist.voterReward + dist.protocolFee + dist.airdropReward, payAmount);
     }
 }

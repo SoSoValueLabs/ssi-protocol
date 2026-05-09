@@ -77,8 +77,22 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         Voting,
         /// @notice Proposal passed; funds have been distributed according to approval path.
         Approved,
-        /// @notice Proposal failed (or no votes); refunds (if any) have been processed.
-        Rejected
+        /// @notice Proposal failed; partial refund has been processed.
+        Rejected,
+        /// @notice No votes were cast; full refund has been returned to proposer.
+        NoVotes
+    }
+
+    /// @notice Fee distribution breakdown recorded when a proposal is resolved.
+    struct ProposalDistribution {
+        /// @notice Voter reward pool in `config.payToken`, fixed when resolved (basis for per-voter `previewReward`).
+        uint256 voterReward;
+        /// @notice Protocol/platform fee in `config.payToken` sent to `treasury` when approved; zero otherwise.
+        uint256 protocolFee;
+        /// @notice Amount in `config.payToken` sent to `airdropPool` when approved (`payAmount - voterReward - protocolFee`); zero otherwise.
+        uint256 airdropReward;
+        /// @notice Amount in `config.payToken` refunded to proposer when rejected or no votes; zero on approval.
+        uint256 refund;
     }
 
     /// @notice Proposal metadata and voting totals.
@@ -97,12 +111,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         uint256 totalRejectWeight;
         /// @notice Whether the proposal has been resolved and payouts/refunds executed.
         bool resolved;
-        /// @notice Voter reward pool in `config.payToken`, fixed when resolved (basis for per-voter `previewReward`).
-        uint256 voterReward;
-        /// @notice Protocol/platform fee in `config.payToken` sent to `treasury` when approved; zero otherwise.
-        uint256 protocolFee;
-        /// @notice Amount in `config.payToken` sent to `airdropPool` when approved (`payAmount - voterReward - protocolFee`); zero otherwise.
-        uint256 airdropReward;
+        /// @notice Fee distribution breakdown, populated when the proposal is resolved.
+        ProposalDistribution distribution;
     }
 
     /// @notice Per-proposal vote aggregation for a given voter.
@@ -147,7 +157,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     /// @notice Emitted when a voter casts (or adds to) a vote on a proposal.
     event Voted(uint256 indexed proposalId, address indexed voter, bool support, uint256 weight);
     /// @notice Emitted when a proposal is resolved and final outcome is set.
-    event ProposalResolved(uint256 indexed proposalId, ProposalState outcome);
+    event ProposalResolved(uint256 indexed proposalId, address indexed proposer, ProposalState outcome, ProposalDistribution distribution);
     /// @notice Emitted when a voter claims their reward for a proposal.
     event RewardClaimed(uint256 indexed proposalId, address indexed voter, uint256 amount);
     /// @notice Emitted when treasury address is updated.
@@ -169,6 +179,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     error InvalidRange(uint256 begin, uint256 end);
     error ProposalAlreadyExists(uint256 proposalId);
     error InvalidNonce(address signer, uint256 expected, uint256 provided);
+    error InvalidConfig(string reason);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -209,6 +220,10 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         }
         airdropPool = airdropPool_;
         emit AirdropPoolUpdated(address(0), airdropPool_);
+
+        if (config.voterFeeBps == 0) revert InvalidConfig("voterFeeBps must be > 0");
+        if (config.voterFeeBps + config.protocolFeeBps > BPS_DENOMINATOR) revert InvalidConfig("total fee bps exceeds 100%");
+        if (config.minApproveRatio == 0 || config.minApproveRatio > BPS_DENOMINATOR) revert InvalidConfig("minApproveRatio out of range");
 
         _votingConfig = config;
     }
@@ -283,9 +298,12 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
             totalApproveWeight: 0,
             totalRejectWeight: 0,
             resolved: false,
-            voterReward: 0,
-            protocolFee: 0,
-            airdropReward: 0
+            distribution: ProposalDistribution({
+                voterReward: 0,
+                protocolFee: 0,
+                airdropReward: 0,
+                refund: 0
+            })
         });
 
         IERC20(_votingConfig.payToken).safeTransferFrom(proposer, address(this), payAmount);
@@ -445,45 +463,35 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         if (block.timestamp <= proposal.votingEndTime) revert VotingPeriodNotEnded(proposalId);
 
         uint256 totalVoteWeight = proposal.totalApproveWeight + proposal.totalRejectWeight;
+        IERC20 pay = IERC20(_votingConfig.payToken);
 
         if (totalVoteWeight == 0) {
-            proposal.state = ProposalState.Rejected;
-            proposal.resolved = true;
-            proposal.voterReward = 0;
-            proposal.protocolFee = 0;
-            proposal.airdropReward = 0;
-            IERC20(_votingConfig.payToken).safeTransfer(proposal.proposer, proposal.payAmount);
-            emit ProposalResolved(proposalId, ProposalState.Rejected);
-            return;
-        }
-
-        uint256 voterRewardAmt = (proposal.payAmount * _votingConfig.voterFeeBps) / BPS_DENOMINATOR;
-
-        if (totalVoteWeight >= _votingConfig.minVoteAmount && proposal.totalApproveWeight * BPS_DENOMINATOR / totalVoteWeight >= _votingConfig.minApproveRatio) {
-            proposal.state = ProposalState.Approved;
-            uint256 protocolFeeAmt = (proposal.payAmount * _votingConfig.protocolFeeBps) / BPS_DENOMINATOR;
-            uint256 airdropAmt = proposal.payAmount - voterRewardAmt - protocolFeeAmt;
-
-            proposal.voterReward = voterRewardAmt;
-            proposal.protocolFee = protocolFeeAmt;
-            proposal.airdropReward = airdropAmt;
-
-            IERC20(_votingConfig.payToken).safeTransfer(treasury, protocolFeeAmt);
-            IERC20(_votingConfig.payToken).safeTransfer(airdropPool, airdropAmt);
+            proposal.state = ProposalState.NoVotes;
+            proposal.distribution.refund = proposal.payAmount;
+            pay.safeTransfer(proposal.proposer, proposal.payAmount);
         } else {
-            proposal.state = ProposalState.Rejected;
-            if (voterRewardAmt > _votingConfig.maxVoterRewardIfRejected) voterRewardAmt = _votingConfig.maxVoterRewardIfRejected;
+            uint256 voterRewardAmt = (proposal.payAmount * _votingConfig.voterFeeBps) / BPS_DENOMINATOR;
+            bool approved = totalVoteWeight >= _votingConfig.minVoteAmount
+                && proposal.totalApproveWeight * BPS_DENOMINATOR / totalVoteWeight >= _votingConfig.minApproveRatio;
 
-            proposal.voterReward = voterRewardAmt;
-            proposal.protocolFee = 0;
-            proposal.airdropReward = 0;
-
-            uint256 refund = proposal.payAmount - voterRewardAmt;
-            IERC20(_votingConfig.payToken).safeTransfer(proposal.proposer, refund);
+            if (approved) {
+                proposal.state = ProposalState.Approved;
+                uint256 protocolFeeAmt = (proposal.payAmount * _votingConfig.protocolFeeBps) / BPS_DENOMINATOR;
+                uint256 airdropAmt = proposal.payAmount - voterRewardAmt - protocolFeeAmt;
+                proposal.distribution = ProposalDistribution(voterRewardAmt, protocolFeeAmt, airdropAmt, 0);
+                pay.safeTransfer(treasury, protocolFeeAmt);
+                pay.safeTransfer(airdropPool, airdropAmt);
+            } else {
+                proposal.state = ProposalState.Rejected;
+                if (voterRewardAmt > _votingConfig.maxVoterRewardIfRejected) voterRewardAmt = _votingConfig.maxVoterRewardIfRejected;
+                uint256 refund = proposal.payAmount - voterRewardAmt;
+                proposal.distribution = ProposalDistribution(voterRewardAmt, 0, 0, refund);
+                pay.safeTransfer(proposal.proposer, refund);
+            }
         }
 
         proposal.resolved = true;
-        emit ProposalResolved(proposalId, proposal.state);
+        emit ProposalResolved(proposalId, proposal.proposer, proposal.state, proposal.distribution);
     }
 
     /// @notice Previews the reward a voter can claim for a resolved proposal.
@@ -499,7 +507,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         if (record.supportWeight == 0 && record.rejectWeight == 0) revert NotVoted(proposalId, voter);
 
         uint256 totalVoteWeight = proposal.totalApproveWeight + proposal.totalRejectWeight;
-        reward = (record.supportWeight + record.rejectWeight) * proposal.voterReward / totalVoteWeight;
+        reward = (record.supportWeight + record.rejectWeight) * proposal.distribution.voterReward / totalVoteWeight;
     }
 
     /// @notice Claims reward for `voter` for a resolved proposal.
