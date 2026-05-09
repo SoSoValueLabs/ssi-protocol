@@ -2,7 +2,6 @@
 pragma solidity ^0.8.25;
 import {ILockable} from "./Interface.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
@@ -30,29 +29,27 @@ import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgra
 contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable, ReentrancyGuardTransientUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
     using SafeERC20 for IERC20;
 
-    /// @notice Basis points charged from `payAmount` and reserved for voter rewards.
-    uint256 public constant VOTER_FEE_BPS = 500;
-    /// @notice Basis points charged from `payAmount` and sent to `treasury` on approval.
-    uint256 public constant PROTOCOL_FEE_BPS = 2500;
     /// @notice Basis points denominator (100% = 10,000 bps).
     uint256 public constant BPS_DENOMINATOR = 10000;
-    /// @notice Minimum approval ratio required to approve a proposal (in bps).
-    uint256 public constant MIN_APPROVE_RATIO = 8000;
-    /// @notice Voting window length for each proposal.
-    uint256 public constant VOTING_DURATION = 24 hours;
-    /// @notice Lock duration applied to voting power on each vote.
-    uint256 public constant VOTE_LOCK_DURATION = 48 hours;
-    /// @notice Minimum total vote weight (scaled by `votingToken` decimals) required for approval path.
-    uint256 public constant MIN_VOTE_AMOUNT = 3000;
-    /// @notice Minimum amount of `payToken` required to create a proposal.
-    uint256 public constant MIN_PAY_AMOUNT = 100;
-    /// @notice Maximum amount of `payToken` voter reward if proposal is rejected.
-    uint256 public constant MAX_VOTER_REWARD_IF_REJECTED = 100;
 
     /// @dev EIP-712 typehash for `createProposalFor`.
     bytes32 public constant CREATE_PROPOSAL_TYPE_HASH = keccak256("CreateProposal(uint256 payAmount,uint256 proposalId,uint8 v,bytes32 r,bytes32 s,uint256 nonce,uint256 deadline)");
     /// @dev EIP-712 typehash for `voteFor`.
     bytes32 public constant VOTE_TYPE_HASH = keccak256("Vote(uint256 proposalId,uint256 amount,bool support,uint256 nonce,uint256 deadline)");
+
+    /// @notice Configuration parameters for initializing the voting contract.
+    struct VotingConfig {
+        address votingToken;
+        address payToken;
+        uint256 voterFeeBps;
+        uint256 protocolFeeBps;
+        uint256 minApproveRatio;
+        uint256 votingDuration;
+        uint256 voteLockDuration;
+        uint256 minVoteAmount;
+        uint256 minPayAmount;
+        uint256 maxVoterRewardIfRejected;
+    }
 
     /// @notice Lifecycle states of a proposal.
     enum ProposalState {
@@ -113,18 +110,12 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         uint256 claimedReward;
     }
 
-    /// @notice Token used to measure and lock voting power. Must implement `ILockable` and `IERC20Metadata`.
-    address public votingToken;
-    /// @notice Token deposited by proposers and used for rewards/refunds.
-    address public payToken;
     /// @notice Fee recipient when proposals are approved.
     address public treasury;
     /// @notice Recipient of the non-voter fees when proposals are approved.
     address public airdropPool;
-    /// @notice Cached decimals of `votingToken`.
-    uint8 public votingTokenDecimals;
-    /// @notice Cached decimals of `payToken`.
-    uint8 public payTokenDecimals;
+    /// @notice Stored voting configuration set at initialization.
+    VotingConfig private _votingConfig;
 
     /// @notice Mapping of proposal id to proposal data.
     mapping(uint256 proposalId => Proposal proposal) public proposals;
@@ -166,15 +157,13 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     }
 
     /// @notice Initializes the upgradeable contract.
-    /// @dev Sets token addresses, pricing, destinations and EIP-712 domain.
-    /// @param votingToken_ Token used to measure/lock voting power (must implement `ILockable`).
-    /// @param payToken_ Token deposited by proposers and paid out as rewards/refunds.
+    /// @dev Sets token addresses, voting parameters, destinations and EIP-712 domain.
+    /// @param config Voting configuration (tokens, fee rates, durations, thresholds).
     /// @param treasury_ Treasury that receives platform fee on approval.
     /// @param airdropPool_ Receiver of the remaining pay amount on approval (after fees).
     /// @param owner_ Owner for admin controls and UUPS upgrades.
     function initialize(
-        address votingToken_,
-        address payToken_,
+        VotingConfig calldata config,
         address treasury_,
         address airdropPool_,
         address owner_
@@ -185,16 +174,12 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         __ReentrancyGuardTransient_init();
         __EIP712_init("RewardedVoting", "1.0.0");
         __Nonces_init();
-        if (votingToken_ == address(0)) {
+        if (config.votingToken == address(0)) {
             revert ZeroAddress();
         }
-        votingToken = votingToken_;
-        votingTokenDecimals = IERC20Metadata(votingToken_).decimals();
-        if (payToken_ == address(0)) {
+        if (config.payToken == address(0)) {
             revert ZeroAddress();
         }
-        payToken = payToken_;
-        payTokenDecimals = IERC20Metadata(payToken_).decimals();
         if (treasury_ == address(0)) {
             revert ZeroAddress();
         }
@@ -205,6 +190,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         }
         airdropPool = airdropPool_;
         emit AirdropPoolUpdated(address(0), airdropPool_);
+
+        _votingConfig = config;
     }
 
     /// @dev Verifies EIP-712 meta-tx signature, deadline, nonce; consumes nonce for `signer`.
@@ -251,14 +238,18 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         airdropPool = newAirdropPool;
     }
 
+    /// @notice Returns the full voting configuration.
+    function getVotingConfig() external view returns (VotingConfig memory) {
+        return _votingConfig;
+    }
+
     /// @dev Creates a proposal and transfers proposer deposit to this contract.
     /// @param payAmount Amount of `payToken` to deposit.
     /// @param proposalId Proposal id to create.
     /// @param proposer Proposal creator whose funds are pulled.
     function _createProposal(uint256 payAmount, uint256 proposalId, address proposer) internal {
-        uint256 minPayAmount = MIN_PAY_AMOUNT * 10 ** payTokenDecimals;
-        if (payAmount < minPayAmount) {
-            revert InsufficientProposalAmount(payAmount, minPayAmount);
+        if (payAmount < _votingConfig.minPayAmount) {
+            revert InsufficientProposalAmount(payAmount, _votingConfig.minPayAmount);
         }
         if (proposals[proposalId].state != ProposalState.NonExistent) {
             revert ProposalAlreadyExists(proposalId);
@@ -268,7 +259,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
             proposer: proposer,
             payAmount: payAmount,
             state: ProposalState.Voting,
-            votingEndTime: block.timestamp + VOTING_DURATION,
+            votingEndTime: block.timestamp + _votingConfig.votingDuration,
             totalApproveWeight: 0,
             totalRejectWeight: 0,
             resolved: false,
@@ -277,7 +268,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
             airdropReward: 0
         });
 
-        IERC20(payToken).safeTransferFrom(proposer, address(this), payAmount);
+        IERC20(_votingConfig.payToken).safeTransferFrom(proposer, address(this), payAmount);
         emit ProposalCreated(proposalId, proposer, payAmount);
     }
 
@@ -336,19 +327,19 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     /// @param signature ECDSA signature over typed data of createProposal.
     function createProposalFor(uint256 payAmount, uint256 proposalId, uint8 v, bytes32 r, bytes32 s, uint256 nonce, uint256 deadline, bytes calldata signature) external nonReentrant whenNotPaused {
         address signer = _verifyAndConsumeMetaTx(hashCreateProposal(payAmount, proposalId, v, r, s, nonce, deadline), nonce, deadline, signature);
-        try IERC20Permit(payToken).permit(signer, address(this), payAmount, deadline, v, r, s) {} catch {}
+        try IERC20Permit(_votingConfig.payToken).permit(signer, address(this), payAmount, deadline, v, r, s) {} catch {}
         _createProposal(payAmount, proposalId, signer);
     }
 
-    /// @dev Casts (or adds to) a vote on a proposal, locking voting power for `VOTE_LOCK_DURATION`.
+    /// @dev Casts (or adds to) a vote on a proposal, locking voting power for `_votingConfig.voteLockDuration`.
     function _vote(uint256 proposalId, uint256 amount, bool support, address voter) internal {
         Proposal storage proposal = proposals[proposalId];
         if (proposal.state != ProposalState.Voting) revert ProposalNotInVotingState(proposalId);
         if (block.timestamp > proposal.votingEndTime) revert VotingPeriodEnded(proposalId);
         if (amount == 0) revert ZeroAmount();
-        if (ILockable(votingToken).getAvailableBalance(voter) < amount) revert InsufficientVotingPower();
+        if (ILockable(_votingConfig.votingToken).getAvailableBalance(voter) < amount) revert InsufficientVotingPower();
 
-        ILockable(votingToken).lock(voter, amount, block.timestamp + VOTE_LOCK_DURATION);
+        ILockable(_votingConfig.votingToken).lock(voter, amount, block.timestamp + _votingConfig.voteLockDuration);
 
         VoteRecord storage voteRecord = votes[proposalId][voter];
 
@@ -440,36 +431,34 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
             proposal.voterReward = 0;
             proposal.protocolFee = 0;
             proposal.airdropReward = 0;
-            IERC20(payToken).safeTransfer(proposal.proposer, proposal.payAmount);
+            IERC20(_votingConfig.payToken).safeTransfer(proposal.proposer, proposal.payAmount);
             emit ProposalResolved(proposalId, ProposalState.Rejected);
             return;
         }
 
-        uint256 voterRewardAmt = (proposal.payAmount * VOTER_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 voterRewardAmt = (proposal.payAmount * _votingConfig.voterFeeBps) / BPS_DENOMINATOR;
 
-        uint256 minVoteWeight = MIN_VOTE_AMOUNT * 10 ** votingTokenDecimals;
-        if (totalVoteWeight >= minVoteWeight && proposal.totalApproveWeight * BPS_DENOMINATOR / totalVoteWeight >= MIN_APPROVE_RATIO) {
+        if (totalVoteWeight >= _votingConfig.minVoteAmount && proposal.totalApproveWeight * BPS_DENOMINATOR / totalVoteWeight >= _votingConfig.minApproveRatio) {
             proposal.state = ProposalState.Approved;
-            uint256 protocolFeeAmt = (proposal.payAmount * PROTOCOL_FEE_BPS) / BPS_DENOMINATOR;
+            uint256 protocolFeeAmt = (proposal.payAmount * _votingConfig.protocolFeeBps) / BPS_DENOMINATOR;
             uint256 airdropAmt = proposal.payAmount - voterRewardAmt - protocolFeeAmt;
 
             proposal.voterReward = voterRewardAmt;
             proposal.protocolFee = protocolFeeAmt;
             proposal.airdropReward = airdropAmt;
 
-            IERC20(payToken).safeTransfer(treasury, protocolFeeAmt);
-            IERC20(payToken).safeTransfer(airdropPool, airdropAmt);
+            IERC20(_votingConfig.payToken).safeTransfer(treasury, protocolFeeAmt);
+            IERC20(_votingConfig.payToken).safeTransfer(airdropPool, airdropAmt);
         } else {
             proposal.state = ProposalState.Rejected;
-            uint256 rejectedCap = MAX_VOTER_REWARD_IF_REJECTED * 10 ** payTokenDecimals;
-            if (voterRewardAmt > rejectedCap) voterRewardAmt = rejectedCap;
+            if (voterRewardAmt > _votingConfig.maxVoterRewardIfRejected) voterRewardAmt = _votingConfig.maxVoterRewardIfRejected;
 
             proposal.voterReward = voterRewardAmt;
             proposal.protocolFee = 0;
             proposal.airdropReward = 0;
 
             uint256 refund = proposal.payAmount - voterRewardAmt;
-            IERC20(payToken).safeTransfer(proposal.proposer, refund);
+            IERC20(_votingConfig.payToken).safeTransfer(proposal.proposer, refund);
         }
 
         proposal.resolved = true;
@@ -509,7 +498,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         voterClaimInfos[voter].claimedReward += reward;
 
         if (reward > 0) {
-            IERC20(payToken).safeTransfer(voter, reward);
+            IERC20(_votingConfig.payToken).safeTransfer(voter, reward);
         }
 
         emit RewardClaimed(proposalId, voter, reward);

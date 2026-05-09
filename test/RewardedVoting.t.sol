@@ -49,10 +49,11 @@ contract RewardedVotingTest is Test {
         ))));
 
         RewardedVoting votingImpl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
         voting = RewardedVoting(address(new ERC1967Proxy(
             address(votingImpl),
             abi.encodeCall(RewardedVoting.initialize, (
-                address(stakeToken), address(payToken), treasury, airdropPool, owner
+                config, treasury, airdropPool, owner
             ))
         )));
 
@@ -95,54 +96,83 @@ contract RewardedVotingTest is Test {
     }
 
     function _skipVotingPeriod() internal {
-        vm.warp(block.timestamp + voting.VOTING_DURATION() + 1);
+        vm.warp(block.timestamp + voting.getVotingConfig().votingDuration + 1);
     }
 
     // ========== Initialization Tests ==========
 
+    function _defaultConfig() internal view returns (RewardedVoting.VotingConfig memory) {
+        return RewardedVoting.VotingConfig({
+            votingToken: address(stakeToken),
+            payToken: address(payToken),
+            voterFeeBps: 500,
+            protocolFeeBps: 2500,
+            minApproveRatio: 8000,
+            votingDuration: 24 hours,
+            voteLockDuration: 48 hours,
+            minVoteAmount: 3000 * 1e18,
+            minPayAmount: 100 * 1e18,
+            maxVoterRewardIfRejected: 100 * 1e18
+        });
+    }
+
     function testInitialize() public view {
-        assertEq(voting.votingToken(), address(stakeToken));
-        assertEq(voting.payToken(), address(payToken));
         assertEq(voting.treasury(), treasury);
         assertEq(voting.airdropPool(), airdropPool);
-        assertEq(voting.votingTokenDecimals(), 18);
-        assertEq(voting.payTokenDecimals(), 18);
         assertEq(voting.owner(), owner);
+
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        assertEq(config.votingToken, address(stakeToken));
+        assertEq(config.payToken, address(payToken));
+        assertEq(config.voterFeeBps, 500);
+        assertEq(config.protocolFeeBps, 2500);
+        assertEq(config.minApproveRatio, 8000);
+        assertEq(config.votingDuration, 24 hours);
+        assertEq(config.voteLockDuration, 48 hours);
+        assertEq(config.minVoteAmount, 3000 * 1e18);
+        assertEq(config.minPayAmount, 100 * 1e18);
+        assertEq(config.maxVoterRewardIfRejected, 100 * 1e18);
     }
 
     function testInitializeZeroVotingToken() public {
         RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
+        config.votingToken = address(0);
         vm.expectRevert(RewardedVoting.ZeroAddress.selector);
         new ERC1967Proxy(
             address(impl),
-            abi.encodeCall(RewardedVoting.initialize, (address(0), address(payToken), treasury, airdropPool, owner))
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
         );
     }
 
     function testInitializeZeroPayToken() public {
         RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
+        config.payToken = address(0);
         vm.expectRevert(RewardedVoting.ZeroAddress.selector);
         new ERC1967Proxy(
             address(impl),
-            abi.encodeCall(RewardedVoting.initialize, (address(stakeToken), address(0), treasury, airdropPool, owner))
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
         );
     }
 
     function testInitializeZeroTreasury() public {
         RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
         vm.expectRevert(RewardedVoting.ZeroAddress.selector);
         new ERC1967Proxy(
             address(impl),
-            abi.encodeCall(RewardedVoting.initialize, (address(stakeToken), address(payToken), address(0), airdropPool, owner))
+            abi.encodeCall(RewardedVoting.initialize, (config, address(0), airdropPool, owner))
         );
     }
 
     function testInitializeZeroAirdropPool() public {
         RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
         vm.expectRevert(RewardedVoting.ZeroAddress.selector);
         new ERC1967Proxy(
             address(impl),
-            abi.encodeCall(RewardedVoting.initialize, (address(stakeToken), address(payToken), treasury, address(0), owner))
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, address(0), owner))
         );
     }
 
@@ -217,13 +247,13 @@ contract RewardedVotingTest is Test {
         assertEq(p_proposer, proposer);
         assertEq(p_payAmount, PAY_AMOUNT);
         assertTrue(p_state == RewardedVoting.ProposalState.Voting);
-        assertEq(p_votingEndTime, block.timestamp + voting.VOTING_DURATION());
+        assertEq(p_votingEndTime, block.timestamp + voting.getVotingConfig().votingDuration);
         assertEq(payToken.balanceOf(proposer), balBefore - PAY_AMOUNT);
         assertEq(payToken.balanceOf(address(voting)), PAY_AMOUNT);
     }
 
     function testCreateProposalInsufficientAmount() public {
-        uint256 minAmount = voting.MIN_PAY_AMOUNT() * 10 ** voting.payTokenDecimals();
+        uint256 minAmount = voting.getVotingConfig().minPayAmount;
         uint256 tooLow = minAmount - 1;
 
         vm.prank(proposer);
@@ -402,7 +432,7 @@ contract RewardedVotingTest is Test {
         assertTrue(state == RewardedVoting.ProposalState.Rejected);
         assertTrue(resolved);
 
-        uint256 rejectedCap = voting.MAX_VOTER_REWARD_IF_REJECTED() * 10 ** voting.payTokenDecimals();
+        uint256 rejectedCap = voting.getVotingConfig().maxVoterRewardIfRejected;
         uint256 rawVoterReward = PAY_AMOUNT * 500 / 10000;
         uint256 expectedVoterReward = rawVoterReward > rejectedCap ? rejectedCap : rawVoterReward;
 
@@ -415,7 +445,7 @@ contract RewardedVotingTest is Test {
     function testResolveRejectedInsufficientTotalVotes() public {
         _createDefaultProposal(1);
 
-        uint256 minVoteWeight = voting.MIN_VOTE_AMOUNT() * 10 ** voting.votingTokenDecimals();
+        uint256 minVoteWeight = voting.getVotingConfig().minVoteAmount;
         uint256 tooFewVotes = minVoteWeight - 1;
 
         _voteApprove(voter1, 1, tooFewVotes);
@@ -471,7 +501,7 @@ contract RewardedVotingTest is Test {
         (,,,,,,,uint256 voterReward,,) = voting.proposals(1);
 
         uint256 rawReward = PAY_AMOUNT * 500 / 10000;
-        uint256 cap = voting.MAX_VOTER_REWARD_IF_REJECTED() * 10 ** voting.payTokenDecimals();
+        uint256 cap = voting.getVotingConfig().maxVoterRewardIfRejected;
         assertEq(voterReward, rawReward > cap ? cap : rawReward);
     }
 
