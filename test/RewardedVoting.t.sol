@@ -756,6 +756,185 @@ contract RewardedVotingTest is Test {
         voting.listClaimedProposalIds(voter1, 0, 1);
     }
 
+    // ========== Renew Proposal Tests ==========
+
+    function _approveAndResolve(uint256 proposalId) internal {
+        _voteApprove(voter1, proposalId, 4000 * 1e18);
+        _skipVotingPeriod();
+        voting.resolveProposal(proposalId);
+    }
+
+    function testRenewProposal() public {
+        _createDefaultProposal(1);
+        _approveAndResolve(1);
+
+        uint256 renewAmount = PAY_AMOUNT;
+        uint256 treasuryBefore = payToken.balanceOf(treasury);
+        uint256 airdropBefore = payToken.balanceOf(airdropPool);
+
+        vm.prank(proposer);
+        voting.createProposal(renewAmount, 1);
+
+        uint256 expectedVoterReward = renewAmount * 500 / 10000;
+        uint256 expectedProtocolFee = renewAmount * 2500 / 10000;
+        uint256 expectedAirdrop = renewAmount - expectedVoterReward - expectedProtocolFee;
+
+        assertEq(payToken.balanceOf(treasury), treasuryBefore + expectedProtocolFee);
+        assertEq(payToken.balanceOf(airdropPool), airdropBefore + expectedAirdrop);
+
+        (,uint256 totalPay,,,,,,RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        assertEq(totalPay, PAY_AMOUNT + renewAmount);
+
+        uint256 origVoterReward = PAY_AMOUNT * 500 / 10000;
+        assertEq(dist.voterReward, origVoterReward + expectedVoterReward);
+    }
+
+    function testRenewProposalNotApproved() public {
+        _createDefaultProposal(1);
+
+        // Voting state → ProposalAlreadyExists
+        vm.prank(proposer);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.ProposalAlreadyExists.selector, 1));
+        voting.createProposal(PAY_AMOUNT, 1);
+
+        // Rejected state → ProposalAlreadyExists
+        _voteReject(voter1, 1, 4000 * 1e18);
+        _skipVotingPeriod();
+        voting.resolveProposal(1);
+
+        vm.prank(proposer);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.ProposalAlreadyExists.selector, 1));
+        voting.createProposal(PAY_AMOUNT, 1);
+
+        // NoVotes state → ProposalAlreadyExists
+        _createDefaultProposal(2);
+        _skipVotingPeriod();
+        voting.resolveProposal(2);
+
+        vm.prank(proposer);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.ProposalAlreadyExists.selector, 2));
+        voting.createProposal(PAY_AMOUNT, 2);
+    }
+
+    function testRenewProposalInsufficientAmount() public {
+        _createDefaultProposal(1);
+        _approveAndResolve(1);
+
+        uint256 minAmount = voting.getVotingConfig().minPayAmount;
+        uint256 tooLow = minAmount - 1;
+
+        vm.prank(proposer);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InsufficientProposalAmount.selector, tooLow, minAmount));
+        voting.createProposal(tooLow, 1);
+    }
+
+    function testRenewProposalNotProposer() public {
+        _createDefaultProposal(1);
+        _approveAndResolve(1);
+
+        payToken.mint(voter1, PAY_AMOUNT);
+        vm.startPrank(voter1);
+        payToken.approve(address(voting), PAY_AMOUNT);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.NotProposer.selector, 1));
+        voting.createProposal(PAY_AMOUNT, 1);
+        vm.stopPrank();
+    }
+
+    function testRenewProposalClaimDelta() public {
+        _createDefaultProposal(1);
+        _approveAndResolve(1);
+
+        uint256 firstReward = voting.previewReward(1, voter1);
+        voting.claimRewardFor(1, voter1);
+        assertEq(payToken.balanceOf(voter1), firstReward);
+
+        vm.prank(proposer);
+        voting.createProposal(PAY_AMOUNT, 1);
+
+        uint256 newTotalReward = voting.previewReward(1, voter1);
+        assertGt(newTotalReward, firstReward);
+
+        uint256 balBefore = payToken.balanceOf(voter1);
+        voting.claimRewardFor(1, voter1);
+        assertEq(payToken.balanceOf(voter1), balBefore + (newTotalReward - firstReward));
+    }
+
+    function testRenewProposalMultipleVotersClaimDelta() public {
+        _createDefaultProposal(1);
+        uint256 v1Amount = 3000 * 1e18;
+        uint256 v2Amount = 1000 * 1e18;
+        _voteApprove(voter1, 1, v1Amount);
+        _voteApprove(voter2, 1, v2Amount);
+        _skipVotingPeriod();
+        voting.resolveProposal(1);
+
+        voting.claimRewardFor(1, voter1);
+        voting.claimRewardFor(1, voter2);
+        uint256 v1First = payToken.balanceOf(voter1);
+        uint256 v2First = payToken.balanceOf(voter2);
+
+        vm.prank(proposer);
+        voting.createProposal(PAY_AMOUNT, 1);
+
+        uint256 v1NewTotal = voting.previewReward(1, voter1);
+        uint256 v2NewTotal = voting.previewReward(1, voter2);
+
+        voting.claimRewardFor(1, voter1);
+        voting.claimRewardFor(1, voter2);
+
+        assertEq(payToken.balanceOf(voter1), v1First + (v1NewTotal - v1First));
+        assertEq(payToken.balanceOf(voter2), v2First + (v2NewTotal - v2First));
+        assertEq(v1NewTotal * v2Amount, v2NewTotal * v1Amount);
+    }
+
+    function testRenewProposalMultipleRenewals() public {
+        _createDefaultProposal(1);
+        _approveAndResolve(1);
+
+        voting.claimRewardFor(1, voter1);
+        uint256 claimed1 = payToken.balanceOf(voter1);
+
+        vm.prank(proposer);
+        voting.createProposal(PAY_AMOUNT, 1);
+        voting.claimRewardFor(1, voter1);
+        uint256 claimed2 = payToken.balanceOf(voter1);
+        assertGt(claimed2, claimed1);
+
+        vm.prank(proposer);
+        voting.createProposal(PAY_AMOUNT, 1);
+        voting.claimRewardFor(1, voter1);
+        uint256 claimed3 = payToken.balanceOf(voter1);
+        assertGt(claimed3, claimed2);
+
+        uint256 perRenewReward = PAY_AMOUNT * 500 / 10000;
+        assertEq(claimed3, claimed1 + perRenewReward * 2);
+    }
+
+    function testRenewProposalWhenPaused() public {
+        _createDefaultProposal(1);
+        _approveAndResolve(1);
+
+        vm.prank(owner);
+        voting.pause();
+
+        vm.prank(proposer);
+        vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
+        voting.createProposal(PAY_AMOUNT, 1);
+    }
+
+    function testRenewProposalPreviewRewardUpdated() public {
+        _createDefaultProposal(1);
+        _approveAndResolve(1);
+
+        uint256 rewardBefore = voting.previewReward(1, voter1);
+
+        vm.prank(proposer);
+        voting.createProposal(PAY_AMOUNT, 1);
+
+        uint256 rewardAfter = voting.previewReward(1, voter1);
+        assertEq(rewardAfter, rewardBefore * 2);
+    }
+
     // ========== EIP-712 Meta-Transaction Tests ==========
 
     function testVoteFor() public {

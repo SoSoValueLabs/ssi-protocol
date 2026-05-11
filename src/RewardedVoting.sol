@@ -164,6 +164,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     event TreasuryUpdated(address oldTreasury, address newTreasury);
     /// @notice Emitted when airdrop pool address is updated.
     event AirdropPoolUpdated(address oldAirdropPool, address newAirdropPool);
+    /// @notice Emitted when an approved proposal is renewed with additional funds.
+    event ProposalRenewed(uint256 indexed proposalId, address indexed proposer, uint256 payAmount, ProposalDistribution distribution);
 
     error ProposalNotInVotingState(uint256 proposalId);
     error VotingPeriodEnded(uint256 proposalId);
@@ -180,6 +182,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     error ProposalAlreadyExists(uint256 proposalId);
     error InvalidNonce(address signer, uint256 expected, uint256 provided);
     error InvalidConfig(string reason);
+    error NotProposer(uint256 proposalId);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -277,37 +280,65 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         return _votingConfig;
     }
 
-    /// @dev Creates a proposal and transfers proposer deposit to this contract.
-    ///      Reverts if `payAmount < config.minPayAmount`.
-    /// @param payAmount Amount of `config.payToken` to deposit (full decimals).
-    /// @param proposalId Proposal id to create.
-    /// @param proposer Proposal creator whose funds are pulled.
+    /// @dev Creates a new proposal or renews an approved one.
+    ///      If the proposal does not exist, creates it. If it is `Approved`, renews it
+    ///      (only by the original proposer). Reverts for any other existing state.
+    /// @param payAmount Amount of `config.payToken` to deposit (full decimals, must be ≥ `config.minPayAmount`).
+    /// @param proposalId Proposal id to create or renew.
+    /// @param proposer Address whose funds are pulled.
     function _createProposal(uint256 payAmount, uint256 proposalId, address proposer) internal {
         if (payAmount < _votingConfig.minPayAmount) {
             revert InsufficientProposalAmount(payAmount, _votingConfig.minPayAmount);
         }
-        if (proposals[proposalId].state != ProposalState.NonExistent) {
+
+        ProposalState state = proposals[proposalId].state;
+        if (state == ProposalState.Approved) {
+            _renewProposal(payAmount, proposalId, proposer);
+        } else if (state == ProposalState.NonExistent) {
+            proposals[proposalId] = Proposal({
+                proposer: proposer,
+                payAmount: payAmount,
+                state: ProposalState.Voting,
+                votingEndTime: block.timestamp + _votingConfig.votingDuration,
+                totalApproveWeight: 0,
+                totalRejectWeight: 0,
+                resolved: false,
+                distribution: ProposalDistribution({
+                    voterReward: 0,
+                    protocolFee: 0,
+                    airdropReward: 0,
+                    refund: 0
+                })
+            });
+
+            IERC20(_votingConfig.payToken).safeTransferFrom(proposer, address(this), payAmount);
+            emit ProposalCreated(proposalId, proposer, payAmount);
+        } else {
             revert ProposalAlreadyExists(proposalId);
         }
+    }
 
-        proposals[proposalId] = Proposal({
-            proposer: proposer,
-            payAmount: payAmount,
-            state: ProposalState.Voting,
-            votingEndTime: block.timestamp + _votingConfig.votingDuration,
-            totalApproveWeight: 0,
-            totalRejectWeight: 0,
-            resolved: false,
-            distribution: ProposalDistribution({
-                voterReward: 0,
-                protocolFee: 0,
-                airdropReward: 0,
-                refund: 0
-            })
-        });
+    /// @dev Renews an approved proposal with additional funds. Only the original proposer can renew.
+    ///      Immediately distributes protocol fee and airdrop reward; voter reward is accumulated.
+    function _renewProposal(uint256 payAmount, uint256 proposalId, address proposer) internal {
+        Proposal storage proposal = proposals[proposalId];
+        if (proposer != proposal.proposer) revert NotProposer(proposalId);
 
-        IERC20(_votingConfig.payToken).safeTransferFrom(proposer, address(this), payAmount);
-        emit ProposalCreated(proposalId, proposer, payAmount);
+        uint256 voterRewardAmt = (payAmount * _votingConfig.voterFeeBps) / BPS_DENOMINATOR;
+        uint256 protocolFeeAmt = (payAmount * _votingConfig.protocolFeeBps) / BPS_DENOMINATOR;
+        uint256 airdropAmt = payAmount - voterRewardAmt - protocolFeeAmt;
+
+        proposal.payAmount += payAmount;
+        proposal.distribution.voterReward += voterRewardAmt;
+        proposal.distribution.protocolFee += protocolFeeAmt;
+        proposal.distribution.airdropReward += airdropAmt;
+
+        emit ProposalRenewed(proposalId, proposer, payAmount, ProposalDistribution(voterRewardAmt, protocolFeeAmt, airdropAmt, 0));
+
+        IERC20 pay = IERC20(_votingConfig.payToken);
+        pay.safeTransferFrom(proposer, address(this), payAmount);
+        pay.safeTransfer(treasury, protocolFeeAmt);
+        pay.safeTransfer(airdropPool, airdropAmt);
     }
 
     /// @notice Creates a proposal by transferring `config.payToken` from caller.
@@ -512,25 +543,32 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
 
     /// @notice Claims reward for `voter` for a resolved proposal.
     /// @dev Can be called by anyone; reward is always paid to `voter`.
+    ///      Supports incremental claiming after `renewProposal`: if the voter already claimed
+    ///      but the proposal was renewed (increasing the voter reward pool), the voter can
+    ///      claim the additional delta.
     /// @param proposalId Proposal id.
     /// @param voter Voter address that receives the reward.
     function claimRewardFor(uint256 proposalId, address voter) public nonReentrant whenNotPaused {
         VoteRecord storage record = votes[proposalId][voter];
-        if (record.rewardClaimed) revert RewardAlreadyClaimed(proposalId, voter);
 
-        uint256 reward = previewReward(proposalId, voter);
+        uint256 totalReward = previewReward(proposalId, voter);
+        uint256 alreadyClaimed = record.reward;
+        if (totalReward <= alreadyClaimed) revert RewardAlreadyClaimed(proposalId, voter);
 
-        record.reward = reward;
-        record.rewardClaimed = true;
+        uint256 claimable = totalReward - alreadyClaimed;
+        record.reward = totalReward;
 
-        voterClaimInfos[voter].claimedProposalIds.push(proposalId);
-        voterClaimInfos[voter].claimedReward += reward;
+        if (!record.rewardClaimed) {
+            record.rewardClaimed = true;
+            voterClaimInfos[voter].claimedProposalIds.push(proposalId);
+        }
+        voterClaimInfos[voter].claimedReward += claimable;
 
-        if (reward > 0) {
-            IERC20(_votingConfig.payToken).safeTransfer(voter, reward);
+        if (claimable > 0) {
+            IERC20(_votingConfig.payToken).safeTransfer(voter, claimable);
         }
 
-        emit RewardClaimed(proposalId, voter, reward);
+        emit RewardClaimed(proposalId, voter, claimable);
     }
 
     /// @notice Claims rewards for multiple proposals for a voter.
@@ -572,7 +610,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
             uint256 proposalId = voterClaimInfos[voter].votedProposalIds[i];
             proposalIds[i - begin] = proposalId;
             VoteRecord memory voteRecord = votes[proposalId][voter];
-            if (!voteRecord.rewardClaimed && proposals[proposalId].resolved) {
+            if (proposals[proposalId].resolved) {
                 voteRecord.reward = previewReward(proposalId, voter);
             }
             voteRecords[i - begin] = voteRecord;
