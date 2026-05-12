@@ -558,7 +558,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
 
         uint256 totalReward = previewReward(proposalId, voter);
         uint256 alreadyClaimed = record.reward;
-        if (totalReward <= alreadyClaimed) revert RewardAlreadyClaimed(proposalId, voter);
+        if (record.rewardClaimed && totalReward <= alreadyClaimed) revert RewardAlreadyClaimed(proposalId, voter);
 
         uint256 claimable = totalReward - alreadyClaimed;
         record.reward = totalReward;

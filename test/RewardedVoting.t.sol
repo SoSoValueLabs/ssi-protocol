@@ -668,6 +668,26 @@ contract RewardedVotingTest is Test {
         voting.claimRewardFor(1, voter1);
     }
 
+    function testClaimRewardZeroRounding() public {
+        _createDefaultProposal(1);
+        _voteApprove(voter1, 1, 4000 * 1e18);
+        _voteApprove(voter2, 1, 1);
+        _skipVotingPeriod();
+        voting.resolveProposal(1);
+
+        uint256 preview = voting.previewReward(1, voter2);
+        assertEq(preview, 0);
+
+        voting.claimRewardFor(1, voter2);
+
+        (,,,bool rewardClaimed, uint256 reward) = voting.votes(1, voter2);
+        assertTrue(rewardClaimed);
+        assertEq(reward, 0);
+
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.RewardAlreadyClaimed.selector, 1, voter2));
+        voting.claimRewardFor(1, voter2);
+    }
+
     function testClaimRewardNotVoted() public {
         _createDefaultProposal(1);
         _voteApprove(voter1, 1, 4000 * 1e18);
