@@ -227,6 +227,11 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         if (config.voterFeeBps == 0) revert InvalidConfig("voterFeeBps must be > 0");
         if (config.voterFeeBps + config.protocolFeeBps > BPS_DENOMINATOR) revert InvalidConfig("total fee bps exceeds 100%");
         if (config.minApproveRatio == 0 || config.minApproveRatio > BPS_DENOMINATOR) revert InvalidConfig("minApproveRatio out of range");
+        if (config.votingDuration == 0) revert InvalidConfig("votingDuration must be > 0");
+        if (config.voteLockDuration == 0) revert InvalidConfig("voteLockDuration must be > 0");
+        if (config.voteLockDuration < config.votingDuration) revert InvalidConfig("voteLockDuration must be >= votingDuration");
+        if (config.minPayAmount == 0) revert InvalidConfig("minPayAmount must be > 0");
+        if (config.minVoteAmount == 0) revert InvalidConfig("minVoteAmount must be > 0");
 
         _votingConfig = config;
     }

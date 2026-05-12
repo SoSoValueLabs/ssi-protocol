@@ -217,6 +217,61 @@ contract RewardedVotingTest is Test {
         );
     }
 
+    function testInitializeZeroVotingDuration() public {
+        RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
+        config.votingDuration = 0;
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "votingDuration must be > 0"));
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
+        );
+    }
+
+    function testInitializeZeroVoteLockDuration() public {
+        RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
+        config.voteLockDuration = 0;
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "voteLockDuration must be > 0"));
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
+        );
+    }
+
+    function testInitializeVoteLockDurationLessThanVotingDuration() public {
+        RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
+        config.voteLockDuration = config.votingDuration - 1;
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "voteLockDuration must be >= votingDuration"));
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
+        );
+    }
+
+    function testInitializeZeroMinPayAmount() public {
+        RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
+        config.minPayAmount = 0;
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "minPayAmount must be > 0"));
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
+        );
+    }
+
+    function testInitializeZeroMinVoteAmount() public {
+        RewardedVoting impl = new RewardedVoting();
+        RewardedVoting.VotingConfig memory config = _defaultConfig();
+        config.minVoteAmount = 0;
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "minVoteAmount must be > 0"));
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(RewardedVoting.initialize, (config, treasury, airdropPool, owner))
+        );
+    }
+
     // ========== Admin Tests ==========
 
     function testUpdateTreasury() public {

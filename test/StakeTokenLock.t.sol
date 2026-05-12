@@ -256,5 +256,38 @@ contract StakeTokenLockTest is Test {
         stakeToken.revokeLockerRole(locker);
     }
 
+    // ========== Max Active Locks Tests ==========
+
+    function testLockExceedsMaxActiveLocks() public {
+        uint256 maxLocks = stakeToken.MAX_ACTIVE_LOCKS();
+        uint256 lockAmount = 1;
+        uint256 expiry = block.timestamp + 1 days;
+
+        vm.startPrank(locker);
+        for (uint256 i; i < maxLocks; i++) {
+            stakeToken.lock(staker, lockAmount, expiry + i);
+        }
+        vm.expectRevert(abi.encodeWithSelector(StakeToken.TooManyActiveLocks.selector, staker, maxLocks));
+        stakeToken.lock(staker, lockAmount, expiry + maxLocks);
+        vm.stopPrank();
+    }
+
+    function testLockAllowsNewAfterExpiredCleanup() public {
+        uint256 maxLocks = stakeToken.MAX_ACTIVE_LOCKS();
+        uint256 lockAmount = 1;
+        uint256 expiry = block.timestamp + 1 hours;
+
+        vm.startPrank(locker);
+        for (uint256 i; i < maxLocks; i++) {
+            stakeToken.lock(staker, lockAmount, expiry);
+        }
+        vm.stopPrank();
+
+        vm.warp(expiry + 1);
+
+        vm.prank(locker);
+        stakeToken.lock(staker, lockAmount, block.timestamp + 1 hours);
+    }
+
     receive() external payable {}
 }

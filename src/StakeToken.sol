@@ -40,7 +40,9 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
     event Locked(address indexed user, uint256 amount, uint256 expiry);
 
     error InsufficientAvailableBalance(address user, uint256 available, uint256 required);
+    error TooManyActiveLocks(address user, uint256 count);
 
+    uint256 public constant MAX_ACTIVE_LOCKS = 200;
     uint8 public constant NATIVE_TOKEN_DECIMALS = 18;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -144,6 +146,8 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
 
     function lock(address user, uint256 amount, uint256 expiry) external onlyLocker {
         _cleanExpiredLocks(user);
+        uint256 len = _locks[user].length;
+        if (len >= MAX_ACTIVE_LOCKS) revert TooManyActiveLocks(user, len);
         _locks[user].push(Lock(amount, expiry));
         emit Locked(user, amount, expiry);
     }
