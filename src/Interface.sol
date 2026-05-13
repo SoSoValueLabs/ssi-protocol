@@ -195,3 +195,8 @@ interface IAssetFeeManager is IAssetController {
     function rejectBurnFeeRequest(uint256 nonce) external;
     function confirmBurnFeeRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external;
 }
+
+interface ILockable {
+    function lock(address user, uint256 amount, uint256 expiry) external;
+    function getAvailableBalance(address user) external view returns (uint256);
+}

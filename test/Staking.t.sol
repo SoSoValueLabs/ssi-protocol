@@ -141,7 +141,9 @@ contract StakingTest is Test {
         vm.expectRevert();
         stakeToken.withdraw(cooldownAmount);
         vm.stopPrank();
-        vm.warp(block.timestamp + stakeToken.cooldown());
+        uint256 ts = block.timestamp;
+        ts += stakeToken.cooldown();
+        vm.warp(ts);
         //// update cooldown
         vm.startPrank(owner);
         stakeFactory.updateCooldown(assetToken.id(), 3600*24*14);
@@ -157,10 +159,12 @@ contract StakingTest is Test {
         // stake again to test new cooldown duration
         stakeToken.stake(unstakeAmount);
         stakeToken.unstake(unstakeAmount);
-        vm.warp(block.timestamp + 3600*24*7);
+        ts += 3600*24*7;
+        vm.warp(ts);
         vm.expectRevert();
         stakeToken.withdraw(unstakeAmount);
-        vm.warp(block.timestamp + 3600*24*7);
+        ts += 3600*24*7;
+        vm.warp(ts);
         stakeToken.withdraw(unstakeAmount);
         vm.stopPrank();
         // lock
@@ -198,12 +202,13 @@ contract StakingTest is Test {
         (,,uint256 cooldown,,) = assetLocking.lockConfigs(address(stakeToken));
         assertEq(amount, 0);
         assertEq(cooldownAmount, lockAmount);
-        assertEq(cooldownEndTimestamp, block.timestamp + cooldown);
+        assertEq(cooldownEndTimestamp, ts + cooldown);
         // withdraw
         vm.startPrank(staker);
         vm.expectRevert();
         assetLocking.withdraw(address(stakeToken), lockAmount);
-        vm.warp(block.timestamp + cooldown);
+        ts += cooldown;
+        vm.warp(ts);
         assetLocking.withdraw(address(stakeToken), lockAmount);
         vm.stopPrank();
         assertEq(stakeToken.balanceOf(staker), lockAmount);

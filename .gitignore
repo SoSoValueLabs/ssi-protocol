@@ -5,3 +5,4 @@ broadcast
 .vscode
 verify.sh
 .env
+.voting.env
