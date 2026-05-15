@@ -341,7 +341,7 @@ contract RewardedVotingTest is Test {
             maxVoterRewardIfRejected: 50 * 1e18
         });
         vm.prank(owner);
-        voting.updateVoteConfig(newConfig);
+        voting.updateVotingConfig(newConfig);
 
         RewardedVoting.VotingConfig memory stored = voting.getVotingConfig();
         assertEq(stored.votingToken, oldConfig.votingToken);
@@ -360,7 +360,7 @@ contract RewardedVotingTest is Test {
         RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
         vm.prank(proposer);
         vm.expectRevert();
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
     }
 
     function testUpdateVoteConfigChangeVotingTokenReverts() public {
@@ -368,7 +368,7 @@ contract RewardedVotingTest is Test {
         config.votingToken = vm.addr(0x99);
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "votingToken is immutable"));
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
     }
 
     function testUpdateVoteConfigChangePayTokenReverts() public {
@@ -376,7 +376,7 @@ contract RewardedVotingTest is Test {
         config.payToken = vm.addr(0x99);
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "payToken is immutable"));
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
     }
 
     function testUpdateVoteConfigZeroVoterFeeBps() public {
@@ -384,7 +384,7 @@ contract RewardedVotingTest is Test {
         config.voterFeeBps = 0;
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "voterFeeBps must be > 0"));
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
     }
 
     function testUpdateVoteConfigFeeOverflow() public {
@@ -393,7 +393,7 @@ contract RewardedVotingTest is Test {
         config.protocolFeeBps = 5001;
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "total fee bps exceeds 100%"));
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
     }
 
     function testUpdateVoteConfigInvalidMinApproveRatio() public {
@@ -401,7 +401,7 @@ contract RewardedVotingTest is Test {
         config.minApproveRatio = 0;
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "minApproveRatio out of range"));
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
     }
 
     function testUpdateVoteConfigZeroVotingDuration() public {
@@ -409,7 +409,7 @@ contract RewardedVotingTest is Test {
         config.votingDuration = 0;
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "votingDuration must be > 0"));
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
     }
 
     function testUpdateVoteConfigLockDurationLessThanVotingDuration() public {
@@ -418,7 +418,7 @@ contract RewardedVotingTest is Test {
         config.voteLockDuration = 24 hours;
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "voteLockDuration must be >= votingDuration"));
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
     }
 
     function testUpdateVoteConfigZeroMinPayAmount() public {
@@ -426,7 +426,7 @@ contract RewardedVotingTest is Test {
         config.minPayAmount = 0;
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "minPayAmount must be > 0"));
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
     }
 
     function testUpdateVoteConfigZeroMinVoteAmount() public {
@@ -434,7 +434,7 @@ contract RewardedVotingTest is Test {
         config.minVoteAmount = 0;
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "minVoteAmount must be > 0"));
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
     }
 
     function testUpdateVoteConfigWhilePaused() public {
@@ -444,7 +444,7 @@ contract RewardedVotingTest is Test {
         RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
         config.voterFeeBps = 1000;
         vm.prank(owner);
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
 
         assertEq(voting.getVotingConfig().voterFeeBps, 1000);
     }
@@ -454,7 +454,7 @@ contract RewardedVotingTest is Test {
         config.minPayAmount = 500 * 1e18;
         config.votingDuration = 48 hours;
         vm.prank(owner);
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
 
         vm.prank(proposer);
         vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InsufficientProposalAmount.selector, 200 * 1e18, 500 * 1e18));
@@ -478,7 +478,7 @@ contract RewardedVotingTest is Test {
         config.minVoteAmount = 99999 * 1e18;
         config.maxVoterRewardIfRejected = 1;
         vm.prank(owner);
-        voting.updateVoteConfig(config);
+        voting.updateVotingConfig(config);
 
         _skipVotingPeriod();
         voting.resolveProposal(1);

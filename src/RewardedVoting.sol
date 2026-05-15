@@ -44,7 +44,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     bytes32 public constant VOTE_TYPE_HASH = keccak256("Vote(uint256 proposalId,uint256 amount,bool support,uint256 nonce,uint256 deadline)");
 
     /// @notice Configuration parameters. Token addresses are immutable; numeric parameters
-    ///         are updatable via `updateVoteConfig()`.
+    ///         are updatable via `updateVotingConfig()`.
     /// @dev All amount fields (`minVoteAmount`, `minPayAmount`, `maxVoterRewardIfRejected`)
     ///      are stored in full decimals (i.e. already scaled by `10 ** token.decimals()`).
     struct VotingConfig {
@@ -290,7 +290,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
 
     /// @notice Updates the voting configuration. Token addresses cannot be changed.
     /// @param newConfig New voting configuration (must keep the same `votingToken` and `payToken`).
-    function updateVoteConfig(VotingConfig calldata newConfig) external onlyOwner {
+    function updateVotingConfig(VotingConfig calldata newConfig) external onlyOwner {
         VotingConfig memory oldConfig = _votingConfig;
         if (newConfig.votingToken != oldConfig.votingToken) revert InvalidConfig("votingToken is immutable");
         if (newConfig.payToken != oldConfig.payToken) revert InvalidConfig("payToken is immutable");
