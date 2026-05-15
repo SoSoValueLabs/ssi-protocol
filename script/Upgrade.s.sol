@@ -11,6 +11,7 @@ import {AssetFeeManager} from "../src/AssetFeeManager.sol";
 import {StakeFactory} from "../src/StakeFactory.sol";
 import {StakeToken} from "../src/StakeToken.sol";
 import {AssetLocking} from "../src/AssetLocking.sol";
+import {RewardedVoting} from "../src/RewardedVoting.sol";
 import {USSI} from "../src/USSI.sol";
 import {Upgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 import {Options} from "../lib/openzeppelin-foundry-upgrades/src/Options.sol";
@@ -44,6 +45,8 @@ contract UpgradeScript is Script {
         address feeManagerImpl = Upgrades.deployImplementation("AssetFeeManager.sol:AssetFeeManager", options);
         options.referenceContract = "build-info-v1:Swap";
         address swapImpl = Upgrades.deployImplementation("Swap.sol:Swap", options);
+        options.referenceContract = "build-info-v1:RewardedVoting";
+        address rewardedVotingImpl = Upgrades.deployImplementation("RewardedVoting.sol:RewardedVoting", options);
         vm.stopBroadcast();
         // impl
         console.log(string.concat("issuerImpl=", vm.toString(address(issuerImpl))));
@@ -56,5 +59,6 @@ contract UpgradeScript is Script {
         console.log(string.concat("assetLockingImpl=", vm.toString(address(assetLockingImpl))));
         console.log(string.concat("uSSIImpl=", vm.toString(address(uSSIImpl))));
         console.log(string.concat("swapImpl=", vm.toString(address(swapImpl))));
+        console.log(string.concat("rewardedVotingImpl=", vm.toString(address(rewardedVotingImpl))));
     }
 }

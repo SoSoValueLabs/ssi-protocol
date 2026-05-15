@@ -463,8 +463,30 @@ contract RewardedVotingTest is Test {
         vm.prank(proposer);
         voting.createProposal(500 * 1e18, 1);
 
-        (,,, uint256 votingEndTime,,,,) = voting.proposals(1);
+        (,,, uint256 votingEndTime,,,,,) = voting.proposals(1);
         assertEq(votingEndTime, block.timestamp + 48 hours);
+    }
+
+    function testUpdateVoteConfigDoesNotAffectInFlightProposal() public {
+        _createDefaultProposal(1);
+        _voteApprove(voter1, 1, 4000 * 1e18);
+
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.voterFeeBps = 2000;
+        config.protocolFeeBps = 3000;
+        config.minApproveRatio = 9999;
+        config.minVoteAmount = 99999 * 1e18;
+        config.maxVoterRewardIfRejected = 1;
+        vm.prank(owner);
+        voting.updateVoteConfig(config);
+
+        _skipVotingPeriod();
+        voting.resolveProposal(1);
+
+        (,,RewardedVoting.ProposalState state,,,,,RewardedVoting.ProposalDistribution memory dist,) = voting.proposals(1);
+        assertTrue(state == RewardedVoting.ProposalState.Approved);
+        assertEq(dist.voterReward, PAY_AMOUNT * 500 / 10000);
+        assertEq(dist.protocolFee, PAY_AMOUNT * 2500 / 10000);
     }
 
     // ========== Proposal Creation Tests ==========
@@ -480,7 +502,7 @@ contract RewardedVotingTest is Test {
             uint256 p_payAmount,
             RewardedVoting.ProposalState p_state,
             uint256 p_votingEndTime,
-            ,,,
+            ,,,,
         ) = voting.proposals(1);
 
         assertEq(p_proposer, proposer);
@@ -527,7 +549,7 @@ contract RewardedVotingTest is Test {
 
         _voteApprove(voter1, 1, voteAmount);
 
-        (,,,,uint256 totalApprove, uint256 totalReject,,) = voting.proposals(1);
+        (,,,,uint256 totalApprove, uint256 totalReject,,,) = voting.proposals(1);
         assertEq(totalApprove, voteAmount);
         assertEq(totalReject, 0);
 
@@ -545,7 +567,7 @@ contract RewardedVotingTest is Test {
 
         _voteReject(voter1, 1, voteAmount);
 
-        (,,,,uint256 totalApprove, uint256 totalReject,,) = voting.proposals(1);
+        (,,,,uint256 totalApprove, uint256 totalReject,,,) = voting.proposals(1);
         assertEq(totalApprove, 0);
         assertEq(totalReject, voteAmount);
 
@@ -596,7 +618,7 @@ contract RewardedVotingTest is Test {
         (, uint256 supportWeight,,,) = voting.votes(1, voter1);
         assertEq(supportWeight, vote1 + vote2);
 
-        (,,,,uint256 totalApprove,,,) = voting.proposals(1);
+        (,,,,uint256 totalApprove,,,,) = voting.proposals(1);
         assertEq(totalApprove, vote1 + vote2);
     }
 
@@ -608,7 +630,7 @@ contract RewardedVotingTest is Test {
         _voteApprove(voter2, 1, amount);
         _voteReject(voter3, 1, amount);
 
-        (,,,,uint256 totalApprove, uint256 totalReject,,) = voting.proposals(1);
+        (,,,,uint256 totalApprove, uint256 totalReject,,,) = voting.proposals(1);
         assertEq(totalApprove, amount * 2);
         assertEq(totalReject, amount);
     }
@@ -639,7 +661,7 @@ contract RewardedVotingTest is Test {
 
         voting.resolveProposal(1);
 
-        (,,RewardedVoting.ProposalState state,,,,bool resolved, RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        (,,RewardedVoting.ProposalState state,,,,bool resolved, RewardedVoting.ProposalDistribution memory dist,) = voting.proposals(1);
         assertTrue(state == RewardedVoting.ProposalState.Approved);
         assertTrue(resolved);
 
@@ -667,7 +689,7 @@ contract RewardedVotingTest is Test {
 
         voting.resolveProposal(1);
 
-        (,,RewardedVoting.ProposalState state,,,,bool resolved, RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        (,,RewardedVoting.ProposalState state,,,,bool resolved, RewardedVoting.ProposalDistribution memory dist,) = voting.proposals(1);
         assertTrue(state == RewardedVoting.ProposalState.Rejected);
         assertTrue(resolved);
 
@@ -693,7 +715,7 @@ contract RewardedVotingTest is Test {
 
         voting.resolveProposal(1);
 
-        (,,RewardedVoting.ProposalState state,,,,,) = voting.proposals(1);
+        (,,RewardedVoting.ProposalState state,,,,,,) = voting.proposals(1);
         assertTrue(state == RewardedVoting.ProposalState.Rejected);
     }
 
@@ -705,7 +727,7 @@ contract RewardedVotingTest is Test {
 
         voting.resolveProposal(1);
 
-        (,,RewardedVoting.ProposalState state,,,,bool resolved, RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        (,,RewardedVoting.ProposalState state,,,,bool resolved, RewardedVoting.ProposalDistribution memory dist,) = voting.proposals(1);
         assertTrue(state == RewardedVoting.ProposalState.NoVotes);
         assertTrue(resolved);
         assertEq(dist.voterReward, 0);
@@ -738,7 +760,7 @@ contract RewardedVotingTest is Test {
 
         voting.resolveProposal(1);
 
-        (,,,,,,,RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        (,,,,,,,RewardedVoting.ProposalDistribution memory dist,) = voting.proposals(1);
 
         uint256 rawReward = PAY_AMOUNT * 500 / 10000;
         uint256 cap = voting.getVotingConfig().maxVoterRewardIfRejected;
@@ -785,7 +807,7 @@ contract RewardedVotingTest is Test {
         _skipVotingPeriod();
         voting.resolveProposal(1);
 
-        (,,,,,,,RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        (,,,,,,,RewardedVoting.ProposalDistribution memory dist,) = voting.proposals(1);
 
         uint256 reward1 = voting.previewReward(1, voter1);
         uint256 reward2 = voting.previewReward(1, voter2);
@@ -856,7 +878,7 @@ contract RewardedVotingTest is Test {
         voting.resolveProposal(1);
 
         uint256 preview = voting.previewReward(1, voter1);
-        (,,,,,,,RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        (,,,,,,,RewardedVoting.ProposalDistribution memory dist,) = voting.proposals(1);
         assertEq(preview, dist.voterReward);
     }
 
@@ -1000,7 +1022,7 @@ contract RewardedVotingTest is Test {
         assertEq(payToken.balanceOf(treasury), treasuryBefore + expectedProtocolFee);
         assertEq(payToken.balanceOf(airdropPool), airdropBefore + expectedAirdrop);
 
-        (,uint256 totalPay,,,,,,RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        (,uint256 totalPay,,,,,,RewardedVoting.ProposalDistribution memory dist,) = voting.proposals(1);
         assertEq(totalPay, PAY_AMOUNT + renewAmount);
 
         uint256 origVoterReward = PAY_AMOUNT * 500 / 10000;
@@ -1238,7 +1260,7 @@ contract RewardedVotingTest is Test {
 
         voting.createProposalFor(payAmount, proposalId, pv, pr, ps, nonce, deadline, signature);
 
-        (address p_proposer,,RewardedVoting.ProposalState p_state,,,,,) = voting.proposals(proposalId);
+        (address p_proposer,,RewardedVoting.ProposalState p_state,,,,,,) = voting.proposals(proposalId);
         assertEq(p_proposer, proposer);
         assertTrue(p_state == RewardedVoting.ProposalState.Voting);
     }
@@ -1253,7 +1275,7 @@ contract RewardedVotingTest is Test {
         _skipVotingPeriod();
         voting.resolveProposal(1);
 
-        (,,,,,,,RewardedVoting.ProposalDistribution memory dist) = voting.proposals(1);
+        (,,,,,,,RewardedVoting.ProposalDistribution memory dist,) = voting.proposals(1);
 
         assertEq(dist.voterReward, 50 * 1e18);
         assertEq(dist.protocolFee, 250 * 1e18);
