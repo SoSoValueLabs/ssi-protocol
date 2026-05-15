@@ -324,6 +324,149 @@ contract RewardedVotingTest is Test {
         voting.createProposal(PAY_AMOUNT, 1);
     }
 
+    // ========== UpdateVoteConfig Tests ==========
+
+    function testUpdateVoteConfig() public {
+        RewardedVoting.VotingConfig memory oldConfig = voting.getVotingConfig();
+        RewardedVoting.VotingConfig memory newConfig = RewardedVoting.VotingConfig({
+            votingToken: oldConfig.votingToken,
+            payToken: oldConfig.payToken,
+            voterFeeBps: 1000,
+            protocolFeeBps: 2000,
+            minApproveRatio: 6000,
+            votingDuration: 48 hours,
+            voteLockDuration: 96 hours,
+            minVoteAmount: 5000 * 1e18,
+            minPayAmount: 200 * 1e18,
+            maxVoterRewardIfRejected: 50 * 1e18
+        });
+        vm.prank(owner);
+        voting.updateVoteConfig(newConfig);
+
+        RewardedVoting.VotingConfig memory stored = voting.getVotingConfig();
+        assertEq(stored.votingToken, oldConfig.votingToken);
+        assertEq(stored.payToken, oldConfig.payToken);
+        assertEq(stored.voterFeeBps, 1000);
+        assertEq(stored.protocolFeeBps, 2000);
+        assertEq(stored.minApproveRatio, 6000);
+        assertEq(stored.votingDuration, 48 hours);
+        assertEq(stored.voteLockDuration, 96 hours);
+        assertEq(stored.minVoteAmount, 5000 * 1e18);
+        assertEq(stored.minPayAmount, 200 * 1e18);
+        assertEq(stored.maxVoterRewardIfRejected, 50 * 1e18);
+    }
+
+    function testUpdateVoteConfigOnlyOwner() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        vm.prank(proposer);
+        vm.expectRevert();
+        voting.updateVoteConfig(config);
+    }
+
+    function testUpdateVoteConfigChangeVotingTokenReverts() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.votingToken = vm.addr(0x99);
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "votingToken is immutable"));
+        voting.updateVoteConfig(config);
+    }
+
+    function testUpdateVoteConfigChangePayTokenReverts() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.payToken = vm.addr(0x99);
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "payToken is immutable"));
+        voting.updateVoteConfig(config);
+    }
+
+    function testUpdateVoteConfigZeroVoterFeeBps() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.voterFeeBps = 0;
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "voterFeeBps must be > 0"));
+        voting.updateVoteConfig(config);
+    }
+
+    function testUpdateVoteConfigFeeOverflow() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.voterFeeBps = 5000;
+        config.protocolFeeBps = 5001;
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "total fee bps exceeds 100%"));
+        voting.updateVoteConfig(config);
+    }
+
+    function testUpdateVoteConfigInvalidMinApproveRatio() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.minApproveRatio = 0;
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "minApproveRatio out of range"));
+        voting.updateVoteConfig(config);
+    }
+
+    function testUpdateVoteConfigZeroVotingDuration() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.votingDuration = 0;
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "votingDuration must be > 0"));
+        voting.updateVoteConfig(config);
+    }
+
+    function testUpdateVoteConfigLockDurationLessThanVotingDuration() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.votingDuration = 48 hours;
+        config.voteLockDuration = 24 hours;
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "voteLockDuration must be >= votingDuration"));
+        voting.updateVoteConfig(config);
+    }
+
+    function testUpdateVoteConfigZeroMinPayAmount() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.minPayAmount = 0;
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "minPayAmount must be > 0"));
+        voting.updateVoteConfig(config);
+    }
+
+    function testUpdateVoteConfigZeroMinVoteAmount() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.minVoteAmount = 0;
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InvalidConfig.selector, "minVoteAmount must be > 0"));
+        voting.updateVoteConfig(config);
+    }
+
+    function testUpdateVoteConfigWhilePaused() public {
+        vm.prank(owner);
+        voting.pause();
+
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.voterFeeBps = 1000;
+        vm.prank(owner);
+        voting.updateVoteConfig(config);
+
+        assertEq(voting.getVotingConfig().voterFeeBps, 1000);
+    }
+
+    function testUpdateVoteConfigAffectsNewProposal() public {
+        RewardedVoting.VotingConfig memory config = voting.getVotingConfig();
+        config.minPayAmount = 500 * 1e18;
+        config.votingDuration = 48 hours;
+        vm.prank(owner);
+        voting.updateVoteConfig(config);
+
+        vm.prank(proposer);
+        vm.expectRevert(abi.encodeWithSelector(RewardedVoting.InsufficientProposalAmount.selector, 200 * 1e18, 500 * 1e18));
+        voting.createProposal(200 * 1e18, 1);
+
+        vm.prank(proposer);
+        voting.createProposal(500 * 1e18, 1);
+
+        (,,, uint256 votingEndTime,,,,) = voting.proposals(1);
+        assertEq(votingEndTime, block.timestamp + 48 hours);
+    }
+
     // ========== Proposal Creation Tests ==========
 
     function testCreateProposal() public {

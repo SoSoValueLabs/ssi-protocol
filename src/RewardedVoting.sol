@@ -43,7 +43,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     /// @dev EIP-712 typehash for `voteFor`.
     bytes32 public constant VOTE_TYPE_HASH = keccak256("Vote(uint256 proposalId,uint256 amount,bool support,uint256 nonce,uint256 deadline)");
 
-    /// @notice Configuration parameters set at initialization and immutable thereafter.
+    /// @notice Configuration parameters. Token addresses are immutable; numeric parameters
+    ///         are updatable via `updateVoteConfig()`.
     /// @dev All amount fields (`minVoteAmount`, `minPayAmount`, `maxVoterRewardIfRejected`)
     ///      are stored in full decimals (i.e. already scaled by `10 ** token.decimals()`).
     struct VotingConfig {
@@ -166,6 +167,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     event AirdropPoolUpdated(address oldAirdropPool, address newAirdropPool);
     /// @notice Emitted when an approved proposal is renewed with additional funds.
     event ProposalRenewed(uint256 indexed proposalId, address indexed proposer, uint256 payAmount, ProposalDistribution distribution);
+    /// @notice Emitted when voting configuration is updated.
+    event VotingConfigUpdated(VotingConfig oldConfig, VotingConfig newConfig);
 
     error ProposalNotInVotingState(uint256 proposalId);
     error VotingPeriodEnded(uint256 proposalId);
@@ -224,14 +227,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         airdropPool = airdropPool_;
         emit AirdropPoolUpdated(address(0), airdropPool_);
 
-        if (config.voterFeeBps == 0) revert InvalidConfig("voterFeeBps must be > 0");
-        if (config.voterFeeBps + config.protocolFeeBps > BPS_DENOMINATOR) revert InvalidConfig("total fee bps exceeds 100%");
-        if (config.minApproveRatio == 0 || config.minApproveRatio > BPS_DENOMINATOR) revert InvalidConfig("minApproveRatio out of range");
-        if (config.votingDuration == 0) revert InvalidConfig("votingDuration must be > 0");
-        if (config.voteLockDuration == 0) revert InvalidConfig("voteLockDuration must be > 0");
-        if (config.voteLockDuration < config.votingDuration) revert InvalidConfig("voteLockDuration must be >= votingDuration");
-        if (config.minPayAmount == 0) revert InvalidConfig("minPayAmount must be > 0");
-        if (config.minVoteAmount == 0) revert InvalidConfig("minVoteAmount must be > 0");
+        _validateConfig(config);
 
         _votingConfig = config;
     }
@@ -280,9 +276,31 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         airdropPool = newAirdropPool;
     }
 
+    /// @notice Updates the voting configuration. Token addresses cannot be changed.
+    /// @param newConfig New voting configuration (must keep the same `votingToken` and `payToken`).
+    function updateVoteConfig(VotingConfig calldata newConfig) external onlyOwner {
+        VotingConfig memory oldConfig = _votingConfig;
+        if (newConfig.votingToken != oldConfig.votingToken) revert InvalidConfig("votingToken is immutable");
+        if (newConfig.payToken != oldConfig.payToken) revert InvalidConfig("payToken is immutable");
+        _validateConfig(newConfig);
+        _votingConfig = newConfig;
+        emit VotingConfigUpdated(oldConfig, newConfig);
+    }
+
     /// @notice Returns the full voting configuration.
     function getVotingConfig() external view returns (VotingConfig memory) {
         return _votingConfig;
+    }
+
+    function _validateConfig(VotingConfig calldata config) private pure {
+        if (config.voterFeeBps == 0) revert InvalidConfig("voterFeeBps must be > 0");
+        if (config.voterFeeBps + config.protocolFeeBps > BPS_DENOMINATOR) revert InvalidConfig("total fee bps exceeds 100%");
+        if (config.minApproveRatio == 0 || config.minApproveRatio > BPS_DENOMINATOR) revert InvalidConfig("minApproveRatio out of range");
+        if (config.votingDuration == 0) revert InvalidConfig("votingDuration must be > 0");
+        if (config.voteLockDuration == 0) revert InvalidConfig("voteLockDuration must be > 0");
+        if (config.voteLockDuration < config.votingDuration) revert InvalidConfig("voteLockDuration must be >= votingDuration");
+        if (config.minPayAmount == 0) revert InvalidConfig("minPayAmount must be > 0");
+        if (config.minVoteAmount == 0) revert InvalidConfig("minVoteAmount must be > 0");
     }
 
     /// @dev Creates a new proposal or renews an approved one.
