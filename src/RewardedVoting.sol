@@ -43,7 +43,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     /// @dev EIP-712 typehash for `voteFor`.
     bytes32 public constant VOTE_TYPE_HASH = keccak256("Vote(uint256 proposalId,uint256 amount,bool support,uint256 nonce,uint256 deadline)");
 
-    /// @notice Configuration parameters set at initialization and immutable thereafter.
+    /// @notice Configuration parameters. Token addresses are immutable; numeric parameters
+    ///         are updatable via `updateVotingConfig()`.
     /// @dev All amount fields (`minVoteAmount`, `minPayAmount`, `maxVoterRewardIfRejected`)
     ///      are stored in full decimals (i.e. already scaled by `10 ** token.decimals()`).
     struct VotingConfig {
@@ -83,6 +84,16 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         NoVotes
     }
 
+    /// @notice Per-proposal snapshot of governance parameters, captured at creation time.
+    struct ProposalConfig {
+        uint256 voterFeeBps;
+        uint256 protocolFeeBps;
+        uint256 minApproveRatio;
+        uint256 voteLockDuration;
+        uint256 minVoteAmount;
+        uint256 maxVoterRewardIfRejected;
+    }
+
     /// @notice Fee distribution breakdown recorded when a proposal is resolved.
     struct ProposalDistribution {
         /// @notice Voter reward pool in `config.payToken`, fixed when resolved (basis for per-voter `previewReward`).
@@ -113,6 +124,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         bool resolved;
         /// @notice Fee distribution breakdown, populated when the proposal is resolved.
         ProposalDistribution distribution;
+        /// @notice Governance parameters snapshotted at proposal creation.
+        ProposalConfig config;
     }
 
     /// @notice Per-proposal vote aggregation for a given voter.
@@ -166,6 +179,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
     event AirdropPoolUpdated(address oldAirdropPool, address newAirdropPool);
     /// @notice Emitted when an approved proposal is renewed with additional funds.
     event ProposalRenewed(uint256 indexed proposalId, address indexed proposer, uint256 payAmount, ProposalDistribution distribution);
+    /// @notice Emitted when voting configuration is updated.
+    event VotingConfigUpdated(VotingConfig oldConfig, VotingConfig newConfig);
 
     error ProposalNotInVotingState(uint256 proposalId);
     error VotingPeriodEnded(uint256 proposalId);
@@ -224,14 +239,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         airdropPool = airdropPool_;
         emit AirdropPoolUpdated(address(0), airdropPool_);
 
-        if (config.voterFeeBps == 0) revert InvalidConfig("voterFeeBps must be > 0");
-        if (config.voterFeeBps + config.protocolFeeBps > BPS_DENOMINATOR) revert InvalidConfig("total fee bps exceeds 100%");
-        if (config.minApproveRatio == 0 || config.minApproveRatio > BPS_DENOMINATOR) revert InvalidConfig("minApproveRatio out of range");
-        if (config.votingDuration == 0) revert InvalidConfig("votingDuration must be > 0");
-        if (config.voteLockDuration == 0) revert InvalidConfig("voteLockDuration must be > 0");
-        if (config.voteLockDuration < config.votingDuration) revert InvalidConfig("voteLockDuration must be >= votingDuration");
-        if (config.minPayAmount == 0) revert InvalidConfig("minPayAmount must be > 0");
-        if (config.minVoteAmount == 0) revert InvalidConfig("minVoteAmount must be > 0");
+        _validateConfig(config);
 
         _votingConfig = config;
     }
@@ -280,9 +288,31 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         airdropPool = newAirdropPool;
     }
 
+    /// @notice Updates the voting configuration. Token addresses cannot be changed.
+    /// @param newConfig New voting configuration (must keep the same `votingToken` and `payToken`).
+    function updateVotingConfig(VotingConfig calldata newConfig) external onlyOwner {
+        VotingConfig memory oldConfig = _votingConfig;
+        if (newConfig.votingToken != oldConfig.votingToken) revert InvalidConfig("votingToken is immutable");
+        if (newConfig.payToken != oldConfig.payToken) revert InvalidConfig("payToken is immutable");
+        _validateConfig(newConfig);
+        _votingConfig = newConfig;
+        emit VotingConfigUpdated(oldConfig, newConfig);
+    }
+
     /// @notice Returns the full voting configuration.
     function getVotingConfig() external view returns (VotingConfig memory) {
         return _votingConfig;
+    }
+
+    function _validateConfig(VotingConfig calldata config) private pure {
+        if (config.voterFeeBps == 0) revert InvalidConfig("voterFeeBps must be > 0");
+        if (config.voterFeeBps + config.protocolFeeBps > BPS_DENOMINATOR) revert InvalidConfig("total fee bps exceeds 100%");
+        if (config.minApproveRatio == 0 || config.minApproveRatio > BPS_DENOMINATOR) revert InvalidConfig("minApproveRatio out of range");
+        if (config.votingDuration == 0) revert InvalidConfig("votingDuration must be > 0");
+        if (config.voteLockDuration == 0) revert InvalidConfig("voteLockDuration must be > 0");
+        if (config.voteLockDuration < config.votingDuration) revert InvalidConfig("voteLockDuration must be >= votingDuration");
+        if (config.minPayAmount == 0) revert InvalidConfig("minPayAmount must be > 0");
+        if (config.minVoteAmount == 0) revert InvalidConfig("minVoteAmount must be > 0");
     }
 
     /// @dev Creates a new proposal or renews an approved one.
@@ -300,11 +330,12 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         if (state == ProposalState.Approved) {
             _renewProposal(payAmount, proposalId, proposer);
         } else if (state == ProposalState.NonExistent) {
+            VotingConfig memory votingConfig = _votingConfig;
             proposals[proposalId] = Proposal({
                 proposer: proposer,
                 payAmount: payAmount,
                 state: ProposalState.Voting,
-                votingEndTime: block.timestamp + _votingConfig.votingDuration,
+                votingEndTime: block.timestamp + votingConfig.votingDuration,
                 totalApproveWeight: 0,
                 totalRejectWeight: 0,
                 resolved: false,
@@ -313,6 +344,14 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
                     protocolFee: 0,
                     airdropReward: 0,
                     refund: 0
+                }),
+                config: ProposalConfig({
+                    voterFeeBps: votingConfig.voterFeeBps,
+                    protocolFeeBps: votingConfig.protocolFeeBps,
+                    minApproveRatio: votingConfig.minApproveRatio,
+                    voteLockDuration: votingConfig.voteLockDuration,
+                    minVoteAmount: votingConfig.minVoteAmount,
+                    maxVoterRewardIfRejected: votingConfig.maxVoterRewardIfRejected
                 })
             });
 
@@ -329,8 +368,8 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         Proposal storage proposal = proposals[proposalId];
         if (proposer != proposal.proposer) revert NotProposer(proposalId);
 
-        uint256 voterRewardAmt = (payAmount * _votingConfig.voterFeeBps) / BPS_DENOMINATOR;
-        uint256 protocolFeeAmt = (payAmount * _votingConfig.protocolFeeBps) / BPS_DENOMINATOR;
+        uint256 voterRewardAmt = (payAmount * proposal.config.voterFeeBps) / BPS_DENOMINATOR;
+        uint256 protocolFeeAmt = (payAmount * proposal.config.protocolFeeBps) / BPS_DENOMINATOR;
         uint256 airdropAmt = payAmount - voterRewardAmt - protocolFeeAmt;
 
         proposal.payAmount += payAmount;
@@ -413,7 +452,7 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
         if (amount == 0) revert ZeroAmount();
         if (ILockable(_votingConfig.votingToken).getAvailableBalance(voter) < amount) revert InsufficientVotingPower();
 
-        ILockable(_votingConfig.votingToken).lock(voter, amount, block.timestamp + _votingConfig.voteLockDuration);
+        ILockable(_votingConfig.votingToken).lock(voter, amount, block.timestamp + proposal.config.voteLockDuration);
 
         VoteRecord storage voteRecord = votes[proposalId][voter];
 
@@ -506,20 +545,21 @@ contract RewardedVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, P
             proposal.distribution.refund = proposal.payAmount;
             pay.safeTransfer(proposal.proposer, proposal.payAmount);
         } else {
-            uint256 voterRewardAmt = (proposal.payAmount * _votingConfig.voterFeeBps) / BPS_DENOMINATOR;
-            bool approved = totalVoteWeight >= _votingConfig.minVoteAmount
-                && proposal.totalApproveWeight * BPS_DENOMINATOR / totalVoteWeight >= _votingConfig.minApproveRatio;
+            ProposalConfig memory proposalConfig = proposal.config;
+            uint256 voterRewardAmt = (proposal.payAmount * proposalConfig.voterFeeBps) / BPS_DENOMINATOR;
+            bool approved = totalVoteWeight >= proposalConfig.minVoteAmount
+                && proposal.totalApproveWeight * BPS_DENOMINATOR / totalVoteWeight >= proposalConfig.minApproveRatio;
 
             if (approved) {
                 proposal.state = ProposalState.Approved;
-                uint256 protocolFeeAmt = (proposal.payAmount * _votingConfig.protocolFeeBps) / BPS_DENOMINATOR;
+                uint256 protocolFeeAmt = (proposal.payAmount * proposalConfig.protocolFeeBps) / BPS_DENOMINATOR;
                 uint256 airdropAmt = proposal.payAmount - voterRewardAmt - protocolFeeAmt;
                 proposal.distribution = ProposalDistribution(voterRewardAmt, protocolFeeAmt, airdropAmt, 0);
                 pay.safeTransfer(treasury, protocolFeeAmt);
                 pay.safeTransfer(airdropPool, airdropAmt);
             } else {
                 proposal.state = ProposalState.Rejected;
-                if (voterRewardAmt > _votingConfig.maxVoterRewardIfRejected) voterRewardAmt = _votingConfig.maxVoterRewardIfRejected;
+                if (voterRewardAmt > proposalConfig.maxVoterRewardIfRejected) voterRewardAmt = proposalConfig.maxVoterRewardIfRejected;
                 uint256 refund = proposal.payAmount - voterRewardAmt;
                 proposal.distribution = ProposalDistribution(voterRewardAmt, 0, 0, refund);
                 pay.safeTransfer(proposal.proposer, refund);
