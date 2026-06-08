@@ -211,9 +211,26 @@ contract ResearchHubVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable
         return votes[proposalId][voter];
     }
 
-    /// @notice Returns the list of distinct proposal ids `voter` has participated in.
-    function getParticipatedProposals(address voter) external view returns (uint256[] memory) {
-        return _participated[voter];
+    /// @notice Returns the distinct proposals `voter` has participated in, along with each
+    ///         proposal's current record and the voter's current vote amount on it.
+    /// @param voter Voter address.
+    /// @return proposalIds Distinct proposal ids the voter participated in.
+    /// @return proposalInfos Current proposal records, aligned with `proposalIds`.
+    /// @return votedAmounts Voter's current vote amount per proposal, aligned with `proposalIds`.
+    function getParticipatedProposals(address voter)
+        external
+        view
+        returns (uint256[] memory proposalIds, Proposal[] memory proposalInfos, uint256[] memory votedAmounts)
+    {
+        proposalIds = _participated[voter];
+        uint256 len = proposalIds.length;
+        proposalInfos = new Proposal[](len);
+        votedAmounts = new uint256[](len);
+        for (uint256 i; i < len; i++) {
+            uint256 pid = proposalIds[i];
+            proposalInfos[i] = proposals[pid];
+            votedAmounts[i] = votes[pid][voter];
+        }
     }
 
     /// @notice Returns how many participation entries `voter` has.

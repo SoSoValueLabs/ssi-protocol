@@ -157,10 +157,20 @@ contract ResearchHubVotingTest is Test {
         assertEq(stakeToken.getAvailableBalance(voter1), STAKE_AMOUNT - 10 ether);
         assertEq(stakeToken.lockedBalances(address(voting), voter1), 10 ether);
 
-        // participation recorded once
-        uint256[] memory participated = voting.getParticipatedProposals(voter1);
+        // participation recorded once, with proposal info and the voter's amount
+        (
+            uint256[] memory participated,
+            ResearchHubVoting.Proposal[] memory infos,
+            uint256[] memory amounts
+        ) = voting.getParticipatedProposals(voter1);
         assertEq(participated.length, 1);
         assertEq(participated[0], PROPOSAL_ID);
+        assertEq(infos.length, 1);
+        assertEq(infos[0].issuer, issuer);
+        assertEq(infos[0].totalVotes, 10 ether);
+        assertEq(uint8(infos[0].state), uint8(ResearchHubVoting.ProposalState.Voting));
+        assertEq(amounts.length, 1);
+        assertEq(amounts[0], 10 ether);
     }
 
     function testVoteAccumulatesSingleParticipation() public {
@@ -189,6 +199,42 @@ contract ResearchHubVotingTest is Test {
         ResearchHubVoting.Proposal memory p = voting.getProposal(PROPOSAL_ID);
         assertEq(p.voterCount, 2);
         assertEq(p.totalVotes, 30 ether);
+    }
+
+    function testGetParticipatedProposalsAcrossMultiple() public {
+        uint256 pid2 = 2;
+        vm.startPrank(issuer);
+        voting.createProposal(PROPOSAL_ID);
+        voting.createProposal(pid2);
+        vm.stopPrank();
+
+        vm.startPrank(voter1);
+        voting.vote(PROPOSAL_ID, 10 ether);
+        voting.vote(pid2, 25 ether);
+        vm.stopPrank();
+
+        // end the second proposal to vary state
+        vm.prank(issuer);
+        voting.endVoting(pid2);
+
+        (
+            uint256[] memory ids,
+            ResearchHubVoting.Proposal[] memory infos,
+            uint256[] memory amounts
+        ) = voting.getParticipatedProposals(voter1);
+
+        assertEq(ids.length, 2);
+        assertEq(infos.length, 2);
+        assertEq(amounts.length, 2);
+
+        assertEq(ids[0], PROPOSAL_ID);
+        assertEq(amounts[0], 10 ether);
+        assertEq(uint8(infos[0].state), uint8(ResearchHubVoting.ProposalState.Voting));
+
+        assertEq(ids[1], pid2);
+        assertEq(amounts[1], 25 ether);
+        assertEq(infos[1].totalVotes, 25 ether);
+        assertEq(uint8(infos[1].state), uint8(ResearchHubVoting.ProposalState.VotingEnded));
     }
 
     function testVoteZeroAmountReverts() public {
