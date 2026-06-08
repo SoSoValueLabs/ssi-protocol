@@ -31,6 +31,11 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
     mapping(address => bool) public lockers;
     mapping(address => Lock[]) private _locks;
 
+    // Releasable balance locks (no expiry): locker => user => amount locked by that locker for the user.
+    mapping(address => mapping(address => uint256)) public lockedBalances;
+    // user => total amount locked across all lockers (used by getAvailableBalance).
+    mapping(address => uint256) public lockedTotals;
+
     event Stake(address staker, uint256 amount);
     event UnStake(address unstaker, uint256 amount);
     event Withdraw(address withdrawer, uint256 amount);
@@ -38,6 +43,8 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
     event LockerRoleGranted(address indexed user);
     event LockerRoleRevoked(address indexed user);
     event Locked(address indexed user, uint256 amount, uint256 expiry);
+    event BalanceLocked(address indexed locker, address indexed user, uint256 amount);
+    event BalanceUnlocked(address indexed locker, address indexed user, uint256 amount);
 
     error InsufficientAvailableBalance(address user, uint256 available, uint256 required);
     error TooManyActiveLocks(address user, uint256 count);
@@ -152,8 +159,29 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
         emit Locked(user, amount, expiry);
     }
 
+    /// @notice Locks `amount` of `user`'s balance with no expiry; releasable any time via `unlock`.
+    /// @dev Only callable by a locker. Accounting is scoped to the calling locker so it can only
+    ///      release what it locked. The locked amount counts against `getAvailableBalance`.
+    function lock(address user, uint256 amount) external onlyLocker whenNotPaused {
+        require(amount > 0, "amount is zero");
+        require(getAvailableBalance(user) >= amount, "insufficient available");
+        lockedBalances[msg.sender][user] += amount;
+        lockedTotals[user] += amount;
+        emit BalanceLocked(msg.sender, user, amount);
+    }
+
+    /// @notice Releases `amount` previously locked by the caller for `user`.
+    /// @dev No role check needed: a caller can only release locks it created (scoped accounting).
+    function unlock(address user, uint256 amount) external whenNotPaused {
+        require(amount > 0, "amount is zero");
+        require(lockedBalances[msg.sender][user] >= amount, "exceeds locked");
+        lockedBalances[msg.sender][user] -= amount;
+        lockedTotals[user] -= amount;
+        emit BalanceUnlocked(msg.sender, user, amount);
+    }
+
     function getAvailableBalance(address user) public view returns (uint256) {
-        uint256 locked = _totalActiveLocks(user);
+        uint256 locked = _totalActiveLocks(user) + lockedTotals[user];
         uint256 balance = balanceOf(user);
         if (locked >= balance) return 0;
         return balance - locked;

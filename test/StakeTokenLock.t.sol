@@ -289,5 +289,132 @@ contract StakeTokenLockTest is Test {
         stakeToken.lock(staker, lockAmount, block.timestamp + 1 hours);
     }
 
+    // ========== Releasable Balance Lock (lock/unlock by amount) ==========
+
+    function testBalanceLockBasic() public {
+        uint256 amount = 4 ether;
+
+        vm.prank(locker);
+        stakeToken.lock(staker, amount);
+
+        assertEq(stakeToken.lockedBalances(locker, staker), amount);
+        assertEq(stakeToken.lockedTotals(staker), amount);
+        assertEq(stakeToken.getAvailableBalance(staker), STAKE_AMOUNT - amount);
+    }
+
+    function testBalanceLockOnlyLocker() public {
+        vm.prank(staker);
+        vm.expectRevert("not locker");
+        stakeToken.lock(staker, 1 ether);
+    }
+
+    function testBalanceLockZeroAmount() public {
+        vm.prank(locker);
+        vm.expectRevert("amount is zero");
+        stakeToken.lock(staker, 0);
+    }
+
+    function testBalanceLockInsufficientAvailable() public {
+        vm.prank(locker);
+        vm.expectRevert("insufficient available");
+        stakeToken.lock(staker, STAKE_AMOUNT + 1);
+    }
+
+    function testBalanceLockUnlockFull() public {
+        uint256 amount = 6 ether;
+
+        vm.startPrank(locker);
+        stakeToken.lock(staker, amount);
+        stakeToken.unlock(staker, amount);
+        vm.stopPrank();
+
+        assertEq(stakeToken.lockedBalances(locker, staker), 0);
+        assertEq(stakeToken.lockedTotals(staker), 0);
+        assertEq(stakeToken.getAvailableBalance(staker), STAKE_AMOUNT);
+    }
+
+    function testBalanceUnlockPartial() public {
+        vm.startPrank(locker);
+        stakeToken.lock(staker, 6 ether);
+        stakeToken.unlock(staker, 2 ether);
+        vm.stopPrank();
+
+        assertEq(stakeToken.lockedBalances(locker, staker), 4 ether);
+        assertEq(stakeToken.lockedTotals(staker), 4 ether);
+        assertEq(stakeToken.getAvailableBalance(staker), STAKE_AMOUNT - 4 ether);
+    }
+
+    function testBalanceUnlockExceeds() public {
+        vm.startPrank(locker);
+        stakeToken.lock(staker, 3 ether);
+        vm.expectRevert("exceeds locked");
+        stakeToken.unlock(staker, 4 ether);
+        vm.stopPrank();
+    }
+
+    function testBalanceUnlockScopedToLocker() public {
+        address locker2 = vm.addr(0x77);
+        vm.prank(owner);
+        stakeToken.grantLockerRole(locker2);
+
+        vm.prank(locker);
+        stakeToken.lock(staker, 3 ether);
+
+        // locker2 never locked anything for staker, so it cannot unlock locker's lock.
+        vm.prank(locker2);
+        vm.expectRevert("exceeds locked");
+        stakeToken.unlock(staker, 3 ether);
+    }
+
+    function testBalanceLockCombinesWithExpiryLock() public {
+        vm.startPrank(locker);
+        stakeToken.lock(staker, 3 ether, block.timestamp + 1 hours); // expiry lock
+        stakeToken.lock(staker, 2 ether);                            // balance lock
+        vm.stopPrank();
+
+        assertEq(stakeToken.getAvailableBalance(staker), STAKE_AMOUNT - 5 ether);
+    }
+
+    function testBalanceLockBlocksTransfer() public {
+        vm.prank(locker);
+        stakeToken.lock(staker, 8 ether);
+
+        vm.prank(staker);
+        vm.expectRevert(
+            abi.encodeWithSelector(StakeToken.InsufficientAvailableBalance.selector, staker, 2 ether, 5 ether)
+        );
+        stakeToken.transfer(staker2, 5 ether);
+    }
+
+    function testBalanceLockBlocksUnstake() public {
+        vm.prank(locker);
+        stakeToken.lock(staker, 8 ether);
+
+        vm.prank(staker);
+        vm.expectRevert(
+            abi.encodeWithSelector(StakeToken.InsufficientAvailableBalance.selector, staker, 2 ether, 5 ether)
+        );
+        stakeToken.unstake(5 ether);
+    }
+
+    function testBalanceLockEmitsEvent() public {
+        vm.expectEmit(true, true, false, true);
+        emit StakeToken.BalanceLocked(locker, staker, 3 ether);
+
+        vm.prank(locker);
+        stakeToken.lock(staker, 3 ether);
+    }
+
+    function testBalanceUnlockEmitsEvent() public {
+        vm.prank(locker);
+        stakeToken.lock(staker, 3 ether);
+
+        vm.expectEmit(true, true, false, true);
+        emit StakeToken.BalanceUnlocked(locker, staker, 3 ether);
+
+        vm.prank(locker);
+        stakeToken.unlock(staker, 3 ether);
+    }
+
     receive() external payable {}
 }
