@@ -161,11 +161,26 @@ contract ResearchHubVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable
     /// @dev Caller must be an authorized issuer (`grantIssuerRole`).
     /// @param proposalId Proposal id to create (must not already exist).
     function createProposal(uint256 proposalId) external onlyIssuer whenNotPaused {
+        _createProposal(proposalId, msg.sender);
+    }
+
+    /// @notice Creates multiple asset issuance proposals in one call. The caller becomes the
+    ///         issuer of each. Reverts (and creates none) if any id already exists.
+    /// @dev Caller must be an authorized issuer (`grantIssuerRole`).
+    /// @param proposalIds Proposal ids to create (each must not already exist).
+    function batchCreateProposal(uint256[] calldata proposalIds) external onlyIssuer whenNotPaused {
+        for (uint256 i; i < proposalIds.length; i++) {
+            _createProposal(proposalIds[i], msg.sender);
+        }
+    }
+
+    /// @dev Creates a proposal with `issuer` as creator.
+    function _createProposal(uint256 proposalId, address issuer) internal {
         Proposal storage proposal = proposals[proposalId];
         if (proposal.state != ProposalState.NonExistent) revert ProposalAlreadyExists(proposalId);
-        proposal.issuer = msg.sender;
+        proposal.issuer = issuer;
         proposal.state = ProposalState.Voting;
-        emit ProposalCreated(proposalId, msg.sender);
+        emit ProposalCreated(proposalId, issuer);
     }
 
     /// @notice Casts (or adds to) an approve vote by locking `amount` of voting power.

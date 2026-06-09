@@ -85,6 +85,46 @@ contract ResearchHubVotingTest is Test {
         voting.createProposal(PROPOSAL_ID);
     }
 
+    function testBatchCreateProposal() public {
+        uint256[] memory ids = new uint256[](3);
+        ids[0] = 10;
+        ids[1] = 11;
+        ids[2] = 12;
+
+        vm.prank(issuer);
+        voting.batchCreateProposal(ids);
+
+        for (uint256 i; i < ids.length; i++) {
+            ResearchHubVoting.Proposal memory p = voting.getProposal(ids[i]);
+            assertEq(p.issuer, issuer);
+            assertEq(uint8(p.state), uint8(ResearchHubVoting.ProposalState.Voting));
+        }
+    }
+
+    function testBatchCreateProposalUnauthorizedReverts() public {
+        address stranger = vm.addr(0xBEEF);
+        uint256[] memory ids = new uint256[](1);
+        ids[0] = 10;
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(ResearchHubVoting.NotAuthorizedIssuer.selector, stranger));
+        voting.batchCreateProposal(ids);
+    }
+
+    function testBatchCreateProposalRevertsAtomicallyOnDuplicate() public {
+        _createProposal(); // PROPOSAL_ID = 1 already exists
+
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = 10;
+        ids[1] = PROPOSAL_ID; // duplicate -> whole batch reverts
+
+        vm.prank(issuer);
+        vm.expectRevert(abi.encodeWithSelector(ResearchHubVoting.ProposalAlreadyExists.selector, PROPOSAL_ID));
+        voting.batchCreateProposal(ids);
+
+        // none of the new ids were created
+        assertEq(uint8(voting.getProposal(10).state), uint8(ResearchHubVoting.ProposalState.NonExistent));
+    }
+
     // ========== Issuer authorization ==========
 
     function testCreateProposalUnauthorizedReverts() public {
