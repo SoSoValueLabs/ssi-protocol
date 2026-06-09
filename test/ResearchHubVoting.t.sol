@@ -277,6 +277,52 @@ contract ResearchHubVotingTest is Test {
         assertEq(uint8(infos[1].state), uint8(ResearchHubVoting.ProposalState.VotingEnded));
     }
 
+    function testGetParticipatedProposalsPaginated() public {
+        // voter1 participates in 3 proposals
+        uint256[] memory ids = new uint256[](3);
+        ids[0] = 10; ids[1] = 11; ids[2] = 12;
+        vm.prank(issuer);
+        voting.batchCreateProposal(ids);
+
+        vm.startPrank(voter1);
+        voting.vote(10, 1 ether);
+        voting.vote(11, 2 ether);
+        voting.vote(12, 3 ether);
+        vm.stopPrank();
+
+        // middle page [1, 2)
+        (
+            uint256[] memory pids,
+            ResearchHubVoting.Proposal[] memory infos,
+            uint256[] memory amounts
+        ) = voting.getParticipatedProposals(voter1, 1, 2);
+
+        assertEq(pids.length, 1);
+        assertEq(pids[0], 11);
+        assertEq(amounts[0], 2 ether);
+        assertEq(infos[0].totalVotes, 2 ether);
+
+        // full range matches the non-paginated getter
+        (uint256[] memory pidsFull,,) = voting.getParticipatedProposals(voter1, 0, 3);
+        assertEq(pidsFull.length, 3);
+        assertEq(pidsFull[0], 10);
+        assertEq(pidsFull[2], 12);
+    }
+
+    function testGetParticipatedProposalsPaginatedInvalidRange() public {
+        _createProposal();
+        vm.prank(voter1);
+        voting.vote(PROPOSAL_ID, 1 ether); // participation count = 1
+
+        // begin >= end
+        vm.expectRevert(abi.encodeWithSelector(ResearchHubVoting.InvalidRange.selector, 1, 1));
+        voting.getParticipatedProposals(voter1, 1, 1);
+
+        // end > length
+        vm.expectRevert(abi.encodeWithSelector(ResearchHubVoting.InvalidRange.selector, 0, 2));
+        voting.getParticipatedProposals(voter1, 0, 2);
+    }
+
     function testVoteZeroAmountReverts() public {
         _createProposal();
         vm.prank(voter1);

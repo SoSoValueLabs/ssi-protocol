@@ -94,6 +94,7 @@ contract ResearchHubVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable
     error ExceedsVotedAmount(uint256 proposalId, address voter, uint256 voted, uint256 requested);
     error ExpiredSignature(uint256 deadline);
     error InvalidNonce(address signer, uint256 expected, uint256 provided);
+    error InvalidRange(uint256 begin, uint256 end);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -320,6 +321,35 @@ contract ResearchHubVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable
         votedAmounts = new uint256[](len);
         for (uint256 i; i < len; i++) {
             uint256 pid = proposalIds[i];
+            proposalInfos[i] = proposals[pid];
+            votedAmounts[i] = votes[pid][voter];
+        }
+    }
+
+    /// @notice Paginated variant of `getParticipatedProposals`: returns the `[begin, end)`
+    ///         slice of `voter`'s participated proposals with each proposal's current record
+    ///         and the voter's current vote amount.
+    /// @param voter Voter address.
+    /// @param begin Start index (inclusive) in the voter's participation list.
+    /// @param end End index (exclusive); must satisfy `begin < end <= getParticipatedCount(voter)`.
+    /// @return proposalIds Proposal ids in the requested range.
+    /// @return proposalInfos Current proposal records, aligned with `proposalIds`.
+    /// @return votedAmounts Voter's current vote amount per proposal, aligned with `proposalIds`.
+    function getParticipatedProposals(address voter, uint256 begin, uint256 end)
+        external
+        view
+        returns (uint256[] memory proposalIds, Proposal[] memory proposalInfos, uint256[] memory votedAmounts)
+    {
+        uint256[] storage all = _participated[voter];
+        if (begin >= end || end > all.length) revert InvalidRange(begin, end);
+
+        uint256 len = end - begin;
+        proposalIds = new uint256[](len);
+        proposalInfos = new Proposal[](len);
+        votedAmounts = new uint256[](len);
+        for (uint256 i; i < len; i++) {
+            uint256 pid = all[begin + i];
+            proposalIds[i] = pid;
             proposalInfos[i] = proposals[pid];
             votedAmounts[i] = votes[pid][voter];
         }
