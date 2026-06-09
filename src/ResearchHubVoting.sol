@@ -7,6 +7,9 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
+import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /// @title ResearchHubVoting
 /// @notice Approval-only voting for asset issuance proposals.
@@ -21,7 +24,12 @@ import {ReentrancyGuardTransientUpgradeable} from "@openzeppelin/contracts-upgra
 ///   Authoritative per-voter weight (amount x duration) is computed off-chain from the
 ///   `Voted` / `VoteWithdrawn` events (which carry block timestamps) together with the token's
 ///   `BalanceLocked` / `BalanceUnlocked` events.
-contract ResearchHubVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable, ReentrancyGuardTransientUpgradeable {
+contract ResearchHubVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable, ReentrancyGuardTransientUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
+    /// @dev EIP-712 typehash for `voteFor`.
+    bytes32 public constant VOTE_TYPE_HASH = keccak256("Vote(uint256 proposalId,uint256 amount,uint256 nonce,uint256 deadline)");
+    /// @dev EIP-712 typehash for `withdrawVoteFor`.
+    bytes32 public constant WITHDRAW_VOTE_TYPE_HASH = keccak256("WithdrawVote(uint256 proposalId,uint256 amount,uint256 nonce,uint256 deadline)");
+
     /// @notice Lifecycle states of a proposal.
     enum ProposalState {
         /// @notice Proposal does not exist (default).
@@ -84,6 +92,8 @@ contract ResearchHubVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable
     error NotIssuer(uint256 proposalId);
     error NotAuthorizedIssuer(address account);
     error ExceedsVotedAmount(uint256 proposalId, address voter, uint256 voted, uint256 requested);
+    error ExpiredSignature(uint256 deadline);
+    error InvalidNonce(address signer, uint256 expected, uint256 provided);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -99,10 +109,24 @@ contract ResearchHubVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable
         __UUPSUpgradeable_init();
         __Pausable_init();
         __ReentrancyGuardTransient_init();
+        __EIP712_init("ResearchHubVoting", "1.0.0");
+        __Nonces_init();
         voteToken = ILockable(voteToken_);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    /// @dev Verifies an EIP-712 meta-tx signature, deadline and nonce; consumes the signer's nonce.
+    function _verifyAndConsumeMetaTx(bytes32 digest, uint256 nonce, uint256 deadline, bytes calldata signature)
+        internal
+        returns (address signer)
+    {
+        if (deadline < block.timestamp) revert ExpiredSignature(deadline);
+        signer = ECDSA.recover(digest, signature);
+        uint256 expectedNonce = nonces(signer);
+        if (nonce != expectedNonce) revert InvalidNonce(signer, expectedNonce, nonce);
+        _useNonce(signer);
+    }
 
     /// @notice Pauses voting, withdrawals and proposal creation.
     function pause() external onlyOwner {
@@ -148,23 +172,44 @@ contract ResearchHubVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable
     /// @param proposalId Proposal id (must be in `Voting` state).
     /// @param amount Voting weight to lock (must be > 0; must not exceed available balance).
     function vote(uint256 proposalId, uint256 amount) external nonReentrant whenNotPaused {
+        _vote(proposalId, amount, msg.sender);
+    }
+
+    /// @notice Casts an approve vote on behalf of a signer using an EIP-712 signature.
+    /// @dev The signer's voting power is locked. Anyone can submit the transaction.
+    /// @param proposalId Proposal id (must be in `Voting` state).
+    /// @param amount Voting weight to lock.
+    /// @param nonce Expected nonce (must equal `nonces(signer)`).
+    /// @param deadline Signature expiry timestamp.
+    /// @param signature ECDSA signature over the typed `Vote` data (see `hashVote`).
+    function voteFor(uint256 proposalId, uint256 amount, uint256 nonce, uint256 deadline, bytes calldata signature)
+        external
+        nonReentrant
+        whenNotPaused
+    {
+        address signer = _verifyAndConsumeMetaTx(hashVote(proposalId, amount, nonce, deadline), nonce, deadline, signature);
+        _vote(proposalId, amount, signer);
+    }
+
+    /// @dev Casts (or adds to) an approve vote for `voter`, locking `amount` of voting power.
+    function _vote(uint256 proposalId, uint256 amount, address voter) internal {
         Proposal storage proposal = proposals[proposalId];
         if (proposal.state != ProposalState.Voting) revert ProposalNotVoting(proposalId);
         if (amount == 0) revert ZeroAmount();
 
-        voteToken.lock(msg.sender, amount);
+        voteToken.lock(voter, amount);
 
-        if (votes[proposalId][msg.sender] == 0) {
+        if (votes[proposalId][voter] == 0) {
             proposal.voterCount += 1;
         }
-        if (!hasVoted[proposalId][msg.sender]) {
-            hasVoted[proposalId][msg.sender] = true;
-            _participated[msg.sender].push(proposalId);
+        if (!hasVoted[proposalId][voter]) {
+            hasVoted[proposalId][voter] = true;
+            _participated[voter].push(proposalId);
         }
-        votes[proposalId][msg.sender] += amount;
+        votes[proposalId][voter] += amount;
         proposal.totalVotes += amount;
 
-        emit Voted(proposalId, msg.sender, amount, votes[proposalId][msg.sender]);
+        emit Voted(proposalId, voter, amount, votes[proposalId][voter]);
     }
 
     /// @notice Withdraws part/all of the caller's vote, unlocking `amount` of voting power.
@@ -172,22 +217,54 @@ contract ResearchHubVoting is Initializable, OwnableUpgradeable, UUPSUpgradeable
     /// @param proposalId Proposal id (must exist).
     /// @param amount Amount to withdraw (must be > 0 and <= caller's current vote).
     function withdrawVote(uint256 proposalId, uint256 amount) external nonReentrant whenNotPaused {
+        _withdrawVote(proposalId, amount, msg.sender);
+    }
+
+    /// @notice Withdraws part/all of a signer's vote on their behalf using an EIP-712 signature.
+    /// @dev Unlocks the signer's voting power. Anyone can submit the transaction. Signed
+    ///      authorization prevents third parties from retracting someone's vote during voting.
+    /// @param proposalId Proposal id (must exist).
+    /// @param amount Amount to withdraw.
+    /// @param nonce Expected nonce (must equal `nonces(signer)`).
+    /// @param deadline Signature expiry timestamp.
+    /// @param signature ECDSA signature over the typed `WithdrawVote` data (see `hashWithdrawVote`).
+    function withdrawVoteFor(uint256 proposalId, uint256 amount, uint256 nonce, uint256 deadline, bytes calldata signature)
+        external
+        nonReentrant
+        whenNotPaused
+    {
+        address signer = _verifyAndConsumeMetaTx(hashWithdrawVote(proposalId, amount, nonce, deadline), nonce, deadline, signature);
+        _withdrawVote(proposalId, amount, signer);
+    }
+
+    /// @dev Withdraws part/all of `voter`'s vote, unlocking `amount` of voting power.
+    function _withdrawVote(uint256 proposalId, uint256 amount, address voter) internal {
         Proposal storage proposal = proposals[proposalId];
         if (proposal.state == ProposalState.NonExistent) revert ProposalNotExist(proposalId);
         if (amount == 0) revert ZeroAmount();
-        uint256 voted = votes[proposalId][msg.sender];
-        if (amount > voted) revert ExceedsVotedAmount(proposalId, msg.sender, voted, amount);
+        uint256 voted = votes[proposalId][voter];
+        if (amount > voted) revert ExceedsVotedAmount(proposalId, voter, voted, amount);
 
-        voteToken.unlock(msg.sender, amount);
+        voteToken.unlock(voter, amount);
 
         uint256 remaining = voted - amount;
-        votes[proposalId][msg.sender] = remaining;
+        votes[proposalId][voter] = remaining;
         proposal.totalVotes -= amount;
         if (remaining == 0) {
             proposal.voterCount -= 1;
         }
 
-        emit VoteWithdrawn(proposalId, msg.sender, amount, remaining);
+        emit VoteWithdrawn(proposalId, voter, amount, remaining);
+    }
+
+    /// @notice Returns the EIP-712 digest to sign for `voteFor`.
+    function hashVote(uint256 proposalId, uint256 amount, uint256 nonce, uint256 deadline) public view returns (bytes32) {
+        return _hashTypedDataV4(keccak256(abi.encode(VOTE_TYPE_HASH, proposalId, amount, nonce, deadline)));
+    }
+
+    /// @notice Returns the EIP-712 digest to sign for `withdrawVoteFor`.
+    function hashWithdrawVote(uint256 proposalId, uint256 amount, uint256 nonce, uint256 deadline) public view returns (bytes32) {
+        return _hashTypedDataV4(keccak256(abi.encode(WITHDRAW_VOTE_TYPE_HASH, proposalId, amount, nonce, deadline)));
     }
 
     /// @notice Ends voting for a proposal. Only the proposal's issuer can call.

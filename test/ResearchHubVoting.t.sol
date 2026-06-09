@@ -408,5 +408,94 @@ contract ResearchHubVotingTest is Test {
         voting.withdrawVote(PROPOSAL_ID, 10 ether);
     }
 
+    // ========== EIP-712 voteFor / withdrawVoteFor ==========
+
+    uint256 constant VOTER1_PK = 0x10; // matches voter1 = vm.addr(0x10)
+
+    function _signVote(uint256 pk, uint256 pid, uint256 amount, uint256 nonce, uint256 deadline)
+        internal
+        returns (bytes memory)
+    {
+        bytes32 digest = voting.hashVote(pid, amount, nonce, deadline);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _signWithdraw(uint256 pk, uint256 pid, uint256 amount, uint256 nonce, uint256 deadline)
+        internal
+        returns (bytes memory)
+    {
+        bytes32 digest = voting.hashWithdrawVote(pid, amount, nonce, deadline);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
+    function testVoteForLocksAndIncrementsNonce() public {
+        _createProposal();
+        uint256 deadline = block.timestamp + 1 hours;
+        uint256 nonce = voting.nonces(voter1);
+        bytes memory sig = _signVote(VOTER1_PK, PROPOSAL_ID, 10 ether, nonce, deadline);
+
+        // a relayer (voter2) submits voter1's signed vote
+        vm.prank(voter2);
+        voting.voteFor(PROPOSAL_ID, 10 ether, nonce, deadline, sig);
+
+        assertEq(voting.getVotes(PROPOSAL_ID, voter1), 10 ether);
+        assertEq(voting.getProposal(PROPOSAL_ID).totalVotes, 10 ether);
+        assertEq(voting.getProposal(PROPOSAL_ID).voterCount, 1);
+        assertEq(stakeToken.lockedBalances(address(voting), voter1), 10 ether);
+        assertEq(voting.nonces(voter1), nonce + 1);
+    }
+
+    function testWithdrawVoteForUnlocks() public {
+        _createProposal();
+        vm.prank(voter1);
+        voting.vote(PROPOSAL_ID, 10 ether);
+
+        uint256 deadline = block.timestamp + 1 hours;
+        uint256 nonce = voting.nonces(voter1);
+        bytes memory sig = _signWithdraw(VOTER1_PK, PROPOSAL_ID, 4 ether, nonce, deadline);
+
+        vm.prank(voter2);
+        voting.withdrawVoteFor(PROPOSAL_ID, 4 ether, nonce, deadline, sig);
+
+        assertEq(voting.getVotes(PROPOSAL_ID, voter1), 6 ether);
+        assertEq(stakeToken.getAvailableBalance(voter1), STAKE_AMOUNT - 6 ether);
+        assertEq(voting.nonces(voter1), nonce + 1);
+    }
+
+    function testVoteForExpiredSignatureReverts() public {
+        _createProposal();
+        vm.warp(1000);
+        uint256 deadline = block.timestamp - 1;
+        uint256 nonce = voting.nonces(voter1);
+        bytes memory sig = _signVote(VOTER1_PK, PROPOSAL_ID, 10 ether, nonce, deadline);
+        vm.expectRevert(abi.encodeWithSelector(ResearchHubVoting.ExpiredSignature.selector, deadline));
+        voting.voteFor(PROPOSAL_ID, 10 ether, nonce, deadline, sig);
+    }
+
+    function testVoteForInvalidNonceReverts() public {
+        _createProposal();
+        uint256 deadline = block.timestamp + 1 hours;
+        uint256 expected = voting.nonces(voter1);
+        uint256 wrongNonce = expected + 1;
+        bytes memory sig = _signVote(VOTER1_PK, PROPOSAL_ID, 10 ether, wrongNonce, deadline);
+        vm.expectRevert(abi.encodeWithSelector(ResearchHubVoting.InvalidNonce.selector, voter1, expected, wrongNonce));
+        voting.voteFor(PROPOSAL_ID, 10 ether, wrongNonce, deadline, sig);
+    }
+
+    function testVoteForReplayReverts() public {
+        _createProposal();
+        uint256 deadline = block.timestamp + 1 hours;
+        uint256 nonce = voting.nonces(voter1);
+        bytes memory sig = _signVote(VOTER1_PK, PROPOSAL_ID, 10 ether, nonce, deadline);
+
+        voting.voteFor(PROPOSAL_ID, 10 ether, nonce, deadline, sig);
+
+        // nonce consumed: replay now expects nonce+1
+        vm.expectRevert(abi.encodeWithSelector(ResearchHubVoting.InvalidNonce.selector, voter1, nonce + 1, nonce));
+        voting.voteFor(PROPOSAL_ID, 10 ether, nonce, deadline, sig);
+    }
+
     receive() external payable {}
 }
