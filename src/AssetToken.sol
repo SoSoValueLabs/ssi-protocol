@@ -206,7 +206,6 @@ contract AssetToken is Initializable, ERC20Upgradeable, AccessControlUpgradeable
     }
 
     function lockBurnFee() external onlyRole(FEEMANAGER_ROLE) {
-        require(rebalancing == false, "is rebalancing");
         require(burningFee == false, "is burning fee");
         burningFee = true;
     }

@@ -999,20 +999,26 @@ contract FundManagerTest is Test {
         vm.stopPrank();
     }
 
-    function test_StartRebalance_BlocksBurnFee() public {
+    function test_BurnFeeAllowedDuringRebalance() public {
         address assetTokenAddress = test_Mint();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
-        // build up a fee tokenset then quote a burn order before entering the window
+        // build up a fee tokenset, then open the rebalancing window
         collectFeeTokenset(assetTokenAddress);
-        OrderInfo memory burnOrder = pmmQuoteBurn(assetTokenAddress);
-
+        assertEq(assetToken.getFeeTokenset().length, 1);
         vm.prank(owner);
         rebalancer.startRebalance(assetID);
+        assertTrue(assetToken.rebalancing());
 
-        vm.prank(owner);
-        vm.expectRevert("is rebalancing");
-        feeManager.addBurnFeeRequest(assetID, burnOrder);
+        // burnFee is still permitted while rebalancing (touches feeTokenset only)
+        OrderInfo memory orderInfo = pmmQuoteBurn(assetTokenAddress);
+        uint nonce = addBurnFeeRequest(assetTokenAddress, orderInfo);
+        uint256 beforeAmount = IERC20(vm.parseAddress(orderInfo.order.outTokenset[0].addr)).balanceOf(vault);
+        pmmConfirmSwapRequest(orderInfo, true);
+        vaultConfirmSwap(orderInfo, beforeAmount, false);
+        confirmBurnFeeRequest(nonce, orderInfo);
+        assertEq(assetToken.getFeeTokenset().length, 0);
+        assertTrue(assetToken.rebalancing());
     }
 
     function test_EndRebalance_ReenablesMint() public {
