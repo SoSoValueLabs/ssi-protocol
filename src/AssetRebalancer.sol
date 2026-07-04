@@ -12,8 +12,27 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
     event AddRebalanceRequest(uint nonce);
     event RejectRebalanceRequest(uint nonce);
     event ConfirmRebalanceRequest(uint nonce);
+    event StartRebalance(uint256 assetID);
+    event EndRebalance(uint256 assetID);
 
     // rebalance
+
+    function startRebalance(uint256 assetID) external onlyOwner {
+        IAssetFactory factory = IAssetFactory(factoryAddress);
+        IAssetToken assetToken = IAssetToken(factory.assetTokens(assetID));
+        require(assetToken.hasRole(assetToken.REBALANCER_ROLE(), address(this)), "not a rebalancer");
+        require(assetToken.feeCollected(), "has fee not collect");
+        assetToken.startRebalance();
+        emit StartRebalance(assetID);
+    }
+
+    function endRebalance(uint256 assetID) external onlyOwner {
+        IAssetFactory factory = IAssetFactory(factoryAddress);
+        IAssetToken assetToken = IAssetToken(factory.assetTokens(assetID));
+        require(assetToken.hasRole(assetToken.REBALANCER_ROLE(), address(this)), "not a rebalancer");
+        assetToken.endRebalance();
+        emit EndRebalance(assetID);
+    }
 
     function getRebalanceRequestLength() external view returns (uint256) {
         return rebalanceRequests.length;
@@ -32,7 +51,7 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         require(assetToken.totalSupply() > 0, "zero supply");
         require(assetToken.feeCollected(), "has fee not collect");
         require(assetToken.hasRole(assetToken.REBALANCER_ROLE(), address(this)), "not a rebalancer");
-        require(assetToken.rebalancing() == false, "is rebalancing");
+        require(assetToken.rebalancing() == true, "not rebalancing");
         require(assetToken.issuing() == false, "is issuing");
         require(swap.checkOrderInfo(orderInfo) == 0, "order not valid");
         require(keccak256(abi.encode(assetToken.getBasket())) == keccak256(abi.encode(basket)), "underlying basket not match");

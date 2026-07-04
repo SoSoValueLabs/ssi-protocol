@@ -516,7 +516,7 @@ contract AssetFeeManagerTest is Test {
 
         // Simulate rebalancing state
         vm.startPrank(address(rebalancer));
-        assetToken.lockRebalance();
+        assetToken.startRebalance();
         vm.stopPrank();
 
         vm.startPrank(owner);

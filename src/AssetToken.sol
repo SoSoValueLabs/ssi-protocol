@@ -25,6 +25,8 @@ contract AssetToken is Initializable, ERC20Upgradeable, AccessControlUpgradeable
     uint public fee;
     uint public lastCollectTimestamp;
     bool public burningFee;
+    // rebalance request guard (single in-flight rebalance swap within the window)
+    bool public rebalanceRequesting;
     // roles
     bytes32 public constant ISSUER_ROLE = keccak256("ISSUER_ROLE");
     bytes32 public constant REBALANCER_ROLE = keccak256("REBALANCER_ROLE");
@@ -34,6 +36,8 @@ contract AssetToken is Initializable, ERC20Upgradeable, AccessControlUpgradeable
     event SetTokenset(Token[] tokenset);
     event SetBasket(Token[] basket);
     event SetFeeTokenset(Token[] feeTokenset);
+    event StartRebalance();
+    event EndRebalance();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -128,14 +132,29 @@ contract AssetToken is Initializable, ERC20Upgradeable, AccessControlUpgradeable
 
     // rebalance
 
-    function lockRebalance() external onlyRole(REBALANCER_ROLE) {
+    function startRebalance() external onlyRole(REBALANCER_ROLE) {
         require(issueCnt == 0, "is issuing");
+        require(burningFee == false, "is burning fee");
         require(rebalancing == false, "is rebalancing");
         rebalancing = true;
+        emit StartRebalance();
+    }
+
+    function endRebalance() external onlyRole(REBALANCER_ROLE) {
+        require(rebalancing == true, "not rebalancing");
+        require(rebalanceRequesting == false, "rebalance request pending");
+        rebalancing = false;
+        emit EndRebalance();
+    }
+
+    function lockRebalance() external onlyRole(REBALANCER_ROLE) {
+        require(rebalancing == true, "not rebalancing");
+        require(rebalanceRequesting == false, "rebalance request pending");
+        rebalanceRequesting = true;
     }
 
     function unlockRebalance() external onlyRole(REBALANCER_ROLE) {
-        rebalancing = false;
+        rebalanceRequesting = false;
     }
 
     function rebalance(Token[] memory inBasket, Token[] memory outBasket) external onlyRole(REBALANCER_ROLE) {
@@ -187,6 +206,7 @@ contract AssetToken is Initializable, ERC20Upgradeable, AccessControlUpgradeable
     }
 
     function lockBurnFee() external onlyRole(FEEMANAGER_ROLE) {
+        require(rebalancing == false, "is rebalancing");
         require(burningFee == false, "is burning fee");
         burningFee = true;
     }

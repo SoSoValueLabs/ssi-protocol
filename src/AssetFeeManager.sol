@@ -45,6 +45,7 @@ contract AssetFeeManager is AssetController, IAssetFeeManager {
         address swapAddress = factory.swaps(assetID);
         ISwap swap = ISwap(swapAddress);
         require(assetToken.hasRole(assetToken.FEEMANAGER_ROLE(), address(this)), "not a fee manager");
+        require(assetToken.rebalancing() == false, "is rebalancing");
         require(assetToken.burningFee() == false, "is burning fee");
         require(swap.checkOrderInfo(orderInfo) == 0, "order not valid");
         Utils.validateTokenset(orderInfo.order.inTokenset);

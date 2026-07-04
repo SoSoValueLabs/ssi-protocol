@@ -91,8 +91,11 @@ interface IAssetToken is IERC20, IAccessControl {
     function mint(address account, uint amount) external;
     function burn(uint amount) external;
     // rebalance
+    function startRebalance() external;
+    function endRebalance() external;
     function lockRebalance() external;
     function rebalancing() external view returns (bool);
+    function rebalanceRequesting() external view returns (bool);
     function unlockRebalance() external;
     function rebalance(Token[] memory inBasket, Token[] memory outBasket) external;
     // fee
@@ -179,6 +182,8 @@ interface IAssetIssuer is IAssetController {
 }
 
 interface IAssetRebalancer is IAssetController {
+    function startRebalance(uint256 assetID) external;
+    function endRebalance(uint256 assetID) external;
     function getRebalanceRequestLength() external view returns (uint256);
     function getRebalanceRequest(uint256 nonce) external view returns (Request memory);
     function addRebalanceRequest(uint256 assetID, Token[] memory basket, OrderInfo memory orderInfo) external returns (uint256);
