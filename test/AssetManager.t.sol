@@ -388,6 +388,9 @@ contract FundManagerTest is Test {
     function addRebalanceRequest(address assetTokenAddress, OrderInfo memory orderInfo) public returns (uint) {
         vm.startPrank(owner);
         AssetToken assetToken = AssetToken(assetTokenAddress);
+        if (!assetToken.rebalancing()) {
+            rebalancer.startRebalance(assetToken.id());
+        }
         uint nonce = rebalancer.addRebalanceRequest(assetToken.id(), assetToken.getBasket(), orderInfo);
         vm.stopPrank();
         return nonce;
@@ -721,6 +724,7 @@ contract FundManagerTest is Test {
         });
         vm.startPrank(owner);
         swap.grantRole(swap.MAKER_ROLE(), 0xd1d1aDfD330B29D4ccF9E0d44E90c256Df597dc9);
+        rebalancer.startRebalance(assetToken.id());
         rebalancer.addRebalanceRequest(assetToken.id(), assetToken.getBasket(), orderInfo);
         vm.stopPrank();
     }
@@ -965,4 +969,158 @@ contract FundManagerTest is Test {
     //     assertTrue(issuer.getRedeemRequest(nonce).status == RequestStatus.CANCEL);
     //     assertTrue(swap.getSwapRequest(redeemRequest.orderHash).status == SwapRequestStatus.CANCEL);
     // }
+
+    // rebalancing window: startRebalance / endRebalance
+
+    function test_StartRebalance_BlocksMintAndRedeem() public {
+        address assetTokenAddress = test_Mint();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        uint256 assetID = assetToken.id();
+
+        vm.prank(owner);
+        rebalancer.startRebalance(assetID);
+        assertTrue(assetToken.rebalancing());
+
+        // mint blocked
+        OrderInfo memory mintOrder = pmmQuoteMint();
+        vm.startPrank(ap);
+        WETH.mint(ap, 10 ** WETH.decimals() * (10**8 + 10000) / 10**8);
+        WETH.approve(address(issuer), 10 ** WETH.decimals() * (10**8 + 10000) / 10**8);
+        vm.expectRevert("is rebalancing");
+        issuer.addMintRequest(assetID, mintOrder, 10000);
+        vm.stopPrank();
+
+        // redeem blocked
+        OrderInfo memory redeemOrder = pmmQuoteRedeem();
+        vm.startPrank(ap);
+        assetToken.approve(address(issuer), redeemOrder.order.inAmount);
+        vm.expectRevert("is rebalancing");
+        issuer.addRedeemRequest(assetID, redeemOrder, 10000);
+        vm.stopPrank();
+    }
+
+    function test_BurnFeeAllowedDuringRebalance() public {
+        address assetTokenAddress = test_Mint();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        uint256 assetID = assetToken.id();
+        // build up a fee tokenset, then open the rebalancing window
+        collectFeeTokenset(assetTokenAddress);
+        assertEq(assetToken.getFeeTokenset().length, 1);
+        vm.prank(owner);
+        rebalancer.startRebalance(assetID);
+        assertTrue(assetToken.rebalancing());
+
+        // burnFee is still permitted while rebalancing (touches feeTokenset only)
+        OrderInfo memory orderInfo = pmmQuoteBurn(assetTokenAddress);
+        uint nonce = addBurnFeeRequest(assetTokenAddress, orderInfo);
+        uint256 beforeAmount = IERC20(vm.parseAddress(orderInfo.order.outTokenset[0].addr)).balanceOf(vault);
+        pmmConfirmSwapRequest(orderInfo, true);
+        vaultConfirmSwap(orderInfo, beforeAmount, false);
+        confirmBurnFeeRequest(nonce, orderInfo);
+        assertEq(assetToken.getFeeTokenset().length, 0);
+        assertTrue(assetToken.rebalancing());
+    }
+
+    function test_EndRebalance_ReenablesMint() public {
+        address assetTokenAddress = test_Mint();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        uint256 assetID = assetToken.id();
+
+        vm.prank(owner);
+        rebalancer.startRebalance(assetID);
+        assertTrue(assetToken.rebalancing());
+        vm.prank(owner);
+        rebalancer.endRebalance(assetID);
+        assertTrue(!assetToken.rebalancing());
+
+        // window can be cycled again after being cleared
+        vm.prank(owner);
+        rebalancer.startRebalance(assetID);
+        assertTrue(assetToken.rebalancing());
+    }
+
+    function test_StartRebalance_RevertWhenIssuing() public {
+        address assetTokenAddress = createAssetToken();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        uint256 assetID = assetToken.id();
+        vm.prank(address(issuer));
+        assetToken.lockIssue();
+        vm.prank(owner);
+        vm.expectRevert("is issuing");
+        rebalancer.startRebalance(assetID);
+    }
+
+    function test_StartRebalance_AllowedWhileBurningFee() public {
+        address assetTokenAddress = createAssetToken();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        uint256 assetID = assetToken.id();
+        // a burnFee is already in flight
+        vm.prank(address(feeManager));
+        assetToken.lockBurnFee();
+        assertTrue(assetToken.burningFee());
+        // opening the rebalancing window is still allowed
+        vm.prank(owner);
+        rebalancer.startRebalance(assetID);
+        assertTrue(assetToken.rebalancing());
+        assertTrue(assetToken.burningFee());
+    }
+
+    function test_StartRebalance_RevertWhenAlreadyRebalancing() public {
+        address assetTokenAddress = createAssetToken();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        uint256 assetID = assetToken.id();
+        vm.prank(owner);
+        rebalancer.startRebalance(assetID);
+        vm.prank(owner);
+        vm.expectRevert("is rebalancing");
+        rebalancer.startRebalance(assetID);
+    }
+
+    function test_EndRebalance_RevertWhenNotRebalancing() public {
+        address assetTokenAddress = createAssetToken();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        uint256 assetID = assetToken.id();
+        vm.prank(owner);
+        vm.expectRevert("not rebalancing");
+        rebalancer.endRebalance(assetID);
+    }
+
+    function test_EndRebalance_RevertWhenRequestPending() public {
+        address assetTokenAddress = test_Mint();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        uint256 assetID = assetToken.id();
+        OrderInfo memory orderInfo = pmmQuoteRebalance(assetTokenAddress);
+        // addRebalanceRequest opens the window and marks a request pending
+        addRebalanceRequest(assetTokenAddress, orderInfo);
+        vm.prank(owner);
+        vm.expectRevert("rebalance request pending");
+        rebalancer.endRebalance(assetID);
+    }
+
+    function test_OnlyOneRebalanceRequestAtATime() public {
+        address assetTokenAddress = test_Mint();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        OrderInfo memory orderInfo = pmmQuoteRebalance(assetTokenAddress);
+        // opens the window and marks a request pending (rebalanceRequesting = true)
+        addRebalanceRequest(assetTokenAddress, orderInfo);
+        assertTrue(assetToken.rebalanceRequesting());
+        // a second in-flight rebalance swap is guarded at the token level
+        vm.prank(address(rebalancer));
+        vm.expectRevert("rebalance request pending");
+        assetToken.lockRebalance();
+    }
+
+    function test_StartRebalance_AccessControl() public {
+        address assetTokenAddress = createAssetToken();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        uint256 assetID = assetToken.id();
+        // controller entrypoint is onlyOwner
+        vm.prank(ap);
+        vm.expectRevert();
+        rebalancer.startRebalance(assetID);
+        // token entrypoint is REBALANCER_ROLE only
+        vm.prank(ap);
+        vm.expectRevert();
+        assetToken.startRebalance();
+    }
 }

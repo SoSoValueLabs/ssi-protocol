@@ -408,7 +408,7 @@ contract AssetFactoryTest is Test {
 
         // Lock rebalancing
         vm.startPrank(rebalancer);
-        assetToken.lockRebalance();
+        assetToken.startRebalance();
         vm.stopPrank();
 
         // Attempt to set a new rebalancer while locked, should fail
@@ -418,7 +418,7 @@ contract AssetFactoryTest is Test {
 
         // Unlock rebalancing
         vm.startPrank(rebalancer);
-        assetToken.unlockRebalance();
+        assetToken.endRebalance();
         vm.stopPrank();
 
         // Lock burn fee
