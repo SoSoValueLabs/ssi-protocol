@@ -1050,15 +1050,19 @@ contract FundManagerTest is Test {
         rebalancer.startRebalance(assetID);
     }
 
-    function test_StartRebalance_RevertWhenBurningFee() public {
+    function test_StartRebalance_AllowedWhileBurningFee() public {
         address assetTokenAddress = createAssetToken();
         AssetToken assetToken = AssetToken(assetTokenAddress);
         uint256 assetID = assetToken.id();
+        // a burnFee is already in flight
         vm.prank(address(feeManager));
         assetToken.lockBurnFee();
+        assertTrue(assetToken.burningFee());
+        // opening the rebalancing window is still allowed
         vm.prank(owner);
-        vm.expectRevert("is burning fee");
         rebalancer.startRebalance(assetID);
+        assertTrue(assetToken.rebalancing());
+        assertTrue(assetToken.burningFee());
     }
 
     function test_StartRebalance_RevertWhenAlreadyRebalancing() public {

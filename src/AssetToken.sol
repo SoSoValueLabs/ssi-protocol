@@ -134,7 +134,6 @@ contract AssetToken is Initializable, ERC20Upgradeable, AccessControlUpgradeable
 
     function startRebalance() external onlyRole(REBALANCER_ROLE) {
         require(issueCnt == 0, "is issuing");
-        require(burningFee == false, "is burning fee");
         require(rebalancing == false, "is rebalancing");
         rebalancing = true;
         emit StartRebalance();
