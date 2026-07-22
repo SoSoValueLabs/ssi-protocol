@@ -1110,6 +1110,28 @@ contract FundManagerTest is Test {
         assetToken.lockRebalance();
     }
 
+    function test_AddRebalanceRequest_AfterOneDayInWindow() public {
+        address assetTokenAddress = test_Mint();
+        AssetToken assetToken = AssetToken(assetTokenAddress);
+        uint256 assetID = assetToken.id();
+
+        vm.prank(owner);
+        rebalancer.startRebalance(assetID);
+        assertTrue(assetToken.rebalancing());
+
+        // fee collection is blocked while the window is open, so after a day
+        // feeCollected() turns false; the request must not be gated on it
+        vm.warp(vm.getBlockTimestamp() + 2 days);
+        assertTrue(!assetToken.feeCollected());
+
+        OrderInfo memory orderInfo = pmmQuoteRebalance(assetTokenAddress);
+        vm.startPrank(owner);
+        uint nonce = rebalancer.addRebalanceRequest(assetID, assetToken.getBasket(), orderInfo);
+        vm.stopPrank();
+        assertTrue(assetToken.rebalanceRequesting());
+        assertTrue(rebalancer.getRebalanceRequest(nonce).status == RequestStatus.PENDING);
+    }
+
     function test_StartRebalance_AccessControl() public {
         address assetTokenAddress = createAssetToken();
         AssetToken assetToken = AssetToken(assetTokenAddress);

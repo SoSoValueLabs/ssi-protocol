@@ -49,7 +49,6 @@ contract AssetRebalancer is AssetController, IAssetRebalancer {
         address swapAddress = factory.swaps(assetID);
         ISwap swap = ISwap(swapAddress);
         require(assetToken.totalSupply() > 0, "zero supply");
-        require(assetToken.feeCollected(), "has fee not collect");
         require(assetToken.hasRole(assetToken.REBALANCER_ROLE(), address(this)), "not a rebalancer");
         require(assetToken.rebalancing() == true, "not rebalancing");
         require(assetToken.issuing() == false, "is issuing");
