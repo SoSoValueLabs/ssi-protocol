@@ -2,6 +2,7 @@
 pragma solidity ^0.8.25;
 import './Interface.sol';
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -10,7 +11,7 @@ import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardTransientUpgradeable.sol";
 // import "forge-std/console.sol";
 
-contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable, ReentrancyGuardTransientUpgradeable {
+contract StakeToken is Initializable, ERC20PermitUpgradeable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable, ReentrancyGuardTransientUpgradeable {
     using SafeERC20 for IERC20;
 
     address public token;
@@ -65,6 +66,10 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
         address owner_
     ) public initializer {
         __ERC20_init(name_, symbol_);
+        // Only present so upgrades-core's `missing-initializer-call` validation passes.
+        // The EIP712 storage it writes is deliberately ignored by the _EIP712Name /
+        // _EIP712Version overrides below, which derive the domain instead.
+        __ERC20Permit_init(name_);
         __Ownable_init(owner_);
         __UUPSUpgradeable_init();
         __Pausable_init();
@@ -89,6 +94,21 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
             return NATIVE_TOKEN_DECIMALS;
         }
         return ERC20Upgradeable(token).decimals();
+    }
+
+    /// @dev The EIP-712 domain is derived from `name()` rather than read from EIP712 storage.
+    ///      That is what lets proxies upgraded through StakeFactory.upgradeSTImpl — which passes
+    ///      EMPTY calldata and therefore cannot run a reinitializer — obtain a valid domain with
+    ///      zero initialization, and makes upgraded tokens behave identically to freshly deployed
+    ///      ones. WARNING: `name()` must never become mutable; changing it would silently
+    ///      invalidate every outstanding permit signature. Removing this override would break the
+    ///      domain of every token that was upgraded with empty calldata.
+    function _EIP712Name() internal view override returns (string memory) {
+        return name();
+    }
+
+    function _EIP712Version() internal pure override returns (string memory) {
+        return "1";
     }
 
     function stake(uint256 amount) external payable whenNotPaused nonReentrant {
