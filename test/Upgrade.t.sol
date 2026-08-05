@@ -185,4 +185,94 @@ contract UpgradeTest is Test {
         assertEq(Upgrades.getImplementationAddress(address(feeManager)), feeManagerImpl);
         vm.stopPrank();
     }
+
+    bytes32 constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.EIP712")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 constant EIP712_STORAGE_SLOT = 0xa16a46d94261c7517cc8ff89f61c0ce93598e3c849801011dee649a6a557d100;
+
+    uint256 constant PERMIT_HOLDER_PK = 0x10;
+
+    function permitDigest(StakeToken token_, address holder, address spender, uint256 value, uint256 nonce, uint256 deadline)
+        internal
+        view
+        returns (bytes32)
+    {
+        return keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                token_.DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(PERMIT_TYPEHASH, holder, spender, value, nonce, deadline))
+            )
+        );
+    }
+
+    /// @dev Simulates a v1 proxy: its EIP712 namespace was never written, because v1 had no
+    ///      permit support at all.
+    function wipeEIP712Storage(address proxy) internal {
+        for (uint256 i; i < 4; i++) {
+            vm.store(proxy, bytes32(uint256(EIP712_STORAGE_SLOT) + i), bytes32(0));
+        }
+    }
+
+    /// @dev The upgrade paths that matter in production:
+    ///      - factory-owned tokens, upgraded via upgradeSTImpl with EMPTY calldata
+    ///      - standalone tokens (sUSSI), upgraded by their owner with upgradeToAndCall
+    ///      Neither can run a reinitializer, so permit must work with zero initialization.
+    function test_UpgradeStakeTokenPreservesPermitState() public {
+        StakeToken factoryToken = StakeToken(payable(stakeToken));
+        address holder = vm.addr(PERMIT_HOLDER_PK);
+        address spender = vm.addr(0x20);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        wipeEIP712Storage(address(factoryToken));
+        wipeEIP712Storage(address(sUSSI));
+
+        bytes32 factoryDomainBefore = factoryToken.DOMAIN_SEPARATOR();
+        bytes32 sUSSIDomainBefore = sUSSI.DOMAIN_SEPARATOR();
+
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(PERMIT_HOLDER_PK, permitDigest(factoryToken, holder, spender, 1 ether, 0, deadline));
+        factoryToken.permit(holder, spender, 1 ether, deadline, v, r, s);
+        assertEq(factoryToken.allowance(holder, spender), 1 ether);
+        assertEq(factoryToken.nonces(holder), 1);
+
+        // Factory path: upgradeSTImpl passes new bytes(0), so no reinitializer can run.
+        uint256[] memory toUpgradeAssetIDs = new uint256[](1);
+        toUpgradeAssetIDs[0] = 1;
+        address stImpl = address(new StakeToken());
+        vm.startPrank(owner);
+        stakeFactory.setSTImpl(stImpl);
+        stakeFactory.upgradeSTImpl(toUpgradeAssetIDs);
+        vm.stopPrank();
+        assertEq(Upgrades.getImplementationAddress(stakeToken), stImpl);
+
+        assertEq(factoryToken.DOMAIN_SEPARATOR(), factoryDomainBefore);
+        assertEq(factoryToken.allowance(holder, spender), 1 ether);
+        assertEq(factoryToken.nonces(holder), 1);
+
+        // A freshly signed permit at the carried-over nonce still verifies.
+        (v, r, s) = vm.sign(PERMIT_HOLDER_PK, permitDigest(factoryToken, holder, spender, 2 ether, 1, deadline));
+        factoryToken.permit(holder, spender, 2 ether, deadline, v, r, s);
+        assertEq(factoryToken.allowance(holder, spender), 2 ether);
+        assertEq(factoryToken.nonces(holder), 2);
+
+        (, string memory domainName, string memory domainVersion,,,,) = factoryToken.eip712Domain();
+        assertEq(domainName, factoryToken.name());
+        assertEq(domainVersion, "1");
+
+        // Standalone path: owner-driven upgradeToAndCall, also with empty calldata.
+        address sUSSIImpl = address(new StakeToken());
+        vm.prank(owner);
+        sUSSI.upgradeToAndCall(sUSSIImpl, new bytes(0));
+
+        assertEq(sUSSI.DOMAIN_SEPARATOR(), sUSSIDomainBefore);
+        (v, r, s) = vm.sign(PERMIT_HOLDER_PK, permitDigest(sUSSI, holder, spender, 3 ether, 0, deadline));
+        sUSSI.permit(holder, spender, 3 ether, deadline, v, r, s);
+        assertEq(sUSSI.allowance(holder, spender), 3 ether);
+
+        (, domainName, domainVersion,,,,) = sUSSI.eip712Domain();
+        assertEq(domainName, "Staked USSI");
+        assertEq(domainVersion, "1");
+    }
 }

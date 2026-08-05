@@ -416,5 +416,205 @@ contract StakeTokenLockTest is Test {
         stakeToken.unlock(staker, 3 ether);
     }
 
+    // ========== Permit (ERC-2612) Tests ==========
+
+    bytes32 constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+    bytes32 constant EIP712_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.EIP712")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 constant EIP712_STORAGE_SLOT = 0xa16a46d94261c7517cc8ff89f61c0ce93598e3c849801011dee649a6a557d100;
+
+    address spender = vm.addr(0x20);
+    uint256 constant STAKER_PK = 0x10;
+    uint256 constant STAKER2_PK = 0x11;
+
+    /// @dev Builds the domain separator from first principles instead of reading
+    ///      DOMAIN_SEPARATOR(), so assertions against it are not self-proving.
+    function computeDomainSeparator(address verifyingContract, string memory name_) internal view returns (bytes32) {
+        return keccak256(
+            abi.encode(EIP712_TYPEHASH, keccak256(bytes(name_)), keccak256(bytes("1")), block.chainid, verifyingContract)
+        );
+    }
+
+    function permitDigest(
+        StakeToken token_,
+        address holder,
+        address spender_,
+        uint256 value,
+        uint256 nonce,
+        uint256 deadline
+    ) internal view returns (bytes32) {
+        return keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                token_.DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(PERMIT_TYPEHASH, holder, spender_, value, nonce, deadline))
+            )
+        );
+    }
+
+    function testDomainSeparatorMatchesIndependentComputation() public view {
+        assertEq(stakeToken.DOMAIN_SEPARATOR(), computeDomainSeparator(address(stakeToken), "Staked SOSO"));
+    }
+
+    function testEip712Domain() public view {
+        (
+            bytes1 fields,
+            string memory name_,
+            string memory version,
+            uint256 chainId,
+            address verifyingContract,
+            bytes32 salt,
+            uint256[] memory extensions
+        ) = stakeToken.eip712Domain();
+
+        assertEq(fields, hex"0f");
+        assertEq(name_, "Staked SOSO");
+        assertEq(version, "1");
+        assertEq(chainId, block.chainid);
+        assertEq(verifyingContract, address(stakeToken));
+        assertEq(salt, bytes32(0));
+        assertEq(extensions.length, 0);
+    }
+
+    function testPermitSetsAllowanceAndBumpsNonce() public {
+        uint256 deadline = block.timestamp + 1 hours;
+        assertEq(stakeToken.nonces(staker), 0);
+
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(STAKER_PK, permitDigest(stakeToken, staker, spender, STAKE_AMOUNT, 0, deadline));
+        stakeToken.permit(staker, spender, STAKE_AMOUNT, deadline, v, r, s);
+
+        assertEq(stakeToken.allowance(staker, spender), STAKE_AMOUNT);
+        assertEq(stakeToken.nonces(staker), 1);
+
+        vm.prank(spender);
+        stakeToken.transferFrom(staker, spender, STAKE_AMOUNT);
+        assertEq(stakeToken.balanceOf(spender), STAKE_AMOUNT);
+        assertEq(stakeToken.balanceOf(staker), 0);
+    }
+
+    function testPermitExpiredDeadline() public {
+        uint256 deadline = block.timestamp - 1;
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(STAKER_PK, permitDigest(stakeToken, staker, spender, STAKE_AMOUNT, 0, deadline));
+
+        vm.expectRevert(abi.encodeWithSelector(ERC20PermitUpgradeable.ERC2612ExpiredSignature.selector, deadline));
+        stakeToken.permit(staker, spender, STAKE_AMOUNT, deadline, v, r, s);
+    }
+
+    function testPermitWrongSigner() public {
+        uint256 deadline = block.timestamp + 1 hours;
+        // staker2 signs a permit that claims to be from staker
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(STAKER2_PK, permitDigest(stakeToken, staker, spender, STAKE_AMOUNT, 0, deadline));
+
+        vm.expectRevert(abi.encodeWithSelector(ERC20PermitUpgradeable.ERC2612InvalidSigner.selector, staker2, staker));
+        stakeToken.permit(staker, spender, STAKE_AMOUNT, deadline, v, r, s);
+    }
+
+    function testPermitReplayReverts() public {
+        uint256 deadline = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(STAKER_PK, permitDigest(stakeToken, staker, spender, STAKE_AMOUNT, 0, deadline));
+        stakeToken.permit(staker, spender, STAKE_AMOUNT, deadline, v, r, s);
+
+        // Replaying consumes nonce 1, so the digest differs and recovery yields a stranger.
+        address recovered =
+            ecrecover(permitDigest(stakeToken, staker, spender, STAKE_AMOUNT, 1, deadline), v, r, s);
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC20PermitUpgradeable.ERC2612InvalidSigner.selector, recovered, staker)
+        );
+        stakeToken.permit(staker, spender, STAKE_AMOUNT, deadline, v, r, s);
+    }
+
+    /// @dev Two tokens can share a name; `verifyingContract` is what keeps their domains distinct.
+    function testPermitCrossContractReplayReverts() public {
+        vm.startPrank(owner);
+        StakeToken impl = new StakeToken();
+        StakeToken twin = StakeToken(payable(address(new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(StakeToken.initialize, ("Staked SOSO", "sSOSO", address(0), 3600 * 24 * 7, owner))
+        ))));
+        vm.stopPrank();
+
+        assertTrue(stakeToken.DOMAIN_SEPARATOR() != twin.DOMAIN_SEPARATOR());
+
+        uint256 deadline = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(STAKER_PK, permitDigest(stakeToken, staker, spender, STAKE_AMOUNT, 0, deadline));
+
+        address recovered = ecrecover(permitDigest(twin, staker, spender, STAKE_AMOUNT, 0, deadline), v, r, s);
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC20PermitUpgradeable.ERC2612InvalidSigner.selector, recovered, staker)
+        );
+        twin.permit(staker, spender, STAKE_AMOUNT, deadline, v, r, s);
+    }
+
+    /// @dev A permit-granted allowance still has to clear the available-balance check in _update.
+    function testPermitDoesNotBypassLocks() public {
+        vm.prank(locker);
+        stakeToken.lock(staker, 6 ether);
+        assertEq(stakeToken.getAvailableBalance(staker), 4 ether);
+
+        uint256 deadline = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(STAKER_PK, permitDigest(stakeToken, staker, spender, STAKE_AMOUNT, 0, deadline));
+        stakeToken.permit(staker, spender, STAKE_AMOUNT, deadline, v, r, s);
+        assertEq(stakeToken.allowance(staker, spender), STAKE_AMOUNT);
+
+        vm.prank(spender);
+        vm.expectRevert(
+            abi.encodeWithSelector(StakeToken.InsufficientAvailableBalance.selector, staker, 4 ether, 9 ether)
+        );
+        stakeToken.transferFrom(staker, spender, 9 ether);
+
+        vm.prank(spender);
+        stakeToken.transferFrom(staker, spender, 4 ether);
+        assertEq(stakeToken.balanceOf(spender), 4 ether);
+    }
+
+    /// @dev permit is intentionally not pausable, matching approve and transfer.
+    function testPermitWorksWhilePaused() public {
+        vm.prank(owner);
+        stakeToken.pause();
+
+        uint256 deadline = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(STAKER_PK, permitDigest(stakeToken, staker, spender, STAKE_AMOUNT, 0, deadline));
+        stakeToken.permit(staker, spender, STAKE_AMOUNT, deadline, v, r, s);
+
+        assertEq(stakeToken.allowance(staker, spender), STAKE_AMOUNT);
+    }
+
+    /// @dev The claim the whole design rests on: a proxy that never ran __ERC20Permit_init
+    ///      (every token upgraded through StakeFactory.upgradeSTImpl, which passes empty
+    ///      calldata) behaves byte-for-byte like a freshly initialized one.
+    function testPermitWorksWithZeroedEIP712Storage() public {
+        bytes32 domainSeparatorBefore = stakeToken.DOMAIN_SEPARATOR();
+
+        // Wipe _hashedName, _hashedVersion, _name and _version.
+        for (uint256 i; i < 4; i++) {
+            vm.store(address(stakeToken), bytes32(uint256(EIP712_STORAGE_SLOT) + i), bytes32(0));
+        }
+        assertEq(vm.load(address(stakeToken), EIP712_STORAGE_SLOT), bytes32(0));
+
+        assertEq(stakeToken.DOMAIN_SEPARATOR(), domainSeparatorBefore);
+        assertEq(stakeToken.DOMAIN_SEPARATOR(), computeDomainSeparator(address(stakeToken), "Staked SOSO"));
+
+        (, string memory name_, string memory version,,,,) = stakeToken.eip712Domain();
+        assertEq(name_, "Staked SOSO");
+        assertEq(version, "1");
+
+        uint256 deadline = block.timestamp + 1 hours;
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(STAKER_PK, permitDigest(stakeToken, staker, spender, STAKE_AMOUNT, 0, deadline));
+        stakeToken.permit(staker, spender, STAKE_AMOUNT, deadline, v, r, s);
+
+        assertEq(stakeToken.allowance(staker, spender), STAKE_AMOUNT);
+        assertEq(stakeToken.nonces(staker), 1);
+    }
+
     receive() external payable {}
 }

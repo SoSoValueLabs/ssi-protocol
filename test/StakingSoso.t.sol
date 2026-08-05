@@ -24,6 +24,13 @@ contract StakingSOSOTest is Test {
 
     uint256 stakeAmount = 10 ether; // 使用ETH作为单位
 
+    bytes32 constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+    bytes32 constant EIP712_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.EIP712")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 constant EIP712_STORAGE_SLOT = 0xa16a46d94261c7517cc8ff89f61c0ce93598e3c849801011dee649a6a557d100;
+
     function setUp() public {
         // 给staker一些ETH用于测试
         vm.deal(staker, 100 ether);
@@ -191,8 +198,9 @@ contract StakingSOSOTest is Test {
 
         StakeToken stakeTokenProxy;
         address forkOwner;
+        bool usingDeployedProxy = stakeTokenAddress != address(0) && ownerAddress != address(0);
 
-        if (stakeTokenAddress != address(0) && ownerAddress != address(0)) {
+        if (usingDeployedProxy) {
             // Use existing StakeToken from fork
             stakeTokenProxy = StakeToken(payable(stakeTokenAddress));
             forkOwner = ownerAddress;
@@ -248,6 +256,22 @@ contract StakingSOSOTest is Test {
         console.log("Before upgrade (after test operations):");
         console.log("  Total Supply:", totalSupplyBeforeUpgrade);
 
+        // The permit upgrade derives its EIP-712 domain from name() precisely because the
+        // deployed v1 proxies never wrote the EIP712 namespace and cannot run a reinitializer.
+        // Fail loudly here rather than shipping a broken domain if that assumption is wrong.
+        if (usingDeployedProxy) {
+            assertEq(
+                vm.load(address(stakeTokenProxy), EIP712_STORAGE_SLOT),
+                bytes32(0),
+                "EIP712 _hashedName must be empty on the deployed proxy"
+            );
+            assertEq(
+                vm.load(address(stakeTokenProxy), bytes32(uint256(EIP712_STORAGE_SLOT) + 1)),
+                bytes32(0),
+                "EIP712 _hashedVersion must be empty on the deployed proxy"
+            );
+        }
+
         // Deploy new implementation and upgrade
         {
             vm.startPrank(forkOwner);
@@ -269,6 +293,46 @@ contract StakingSOSOTest is Test {
         assertEq(stakeTokenProxy.cooldown(), cooldownBefore, "Cooldown should be preserved");
         assertEq(stakeTokenProxy.totalSupply(), totalSupplyBeforeUpgrade, "Total supply should be preserved");
         assertEq(stakeTokenProxy.balanceOf(testStaker), 1 ether, "User balance should be preserved");
+
+        // Verify permit is live on the upgraded proxy with no initialization step
+        {
+            assertEq(stakeTokenProxy.nonces(testStaker), 0, "Nonce should start at zero");
+            assertEq(
+                stakeTokenProxy.DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(
+                    EIP712_TYPEHASH, keccak256(bytes(nameBefore)), keccak256(bytes("1")), block.chainid, address(stakeTokenProxy)
+                )),
+                "Domain separator should be derived from the preserved token name"
+            );
+
+            (bytes1 fields, string memory domainName, string memory domainVersion, uint256 chainId, address verifyingContract,,)
+                = stakeTokenProxy.eip712Domain();
+            assertEq(fields, hex"0f");
+            assertEq(domainName, nameBefore, "Domain name should equal the token name");
+            assertEq(domainVersion, "1");
+            assertEq(chainId, block.chainid);
+            assertEq(verifyingContract, address(stakeTokenProxy));
+
+            address permitSpender = vm.addr(0x101);
+            uint256 permitDeadline = block.timestamp + 1 hours;
+            bytes32 digest = keccak256(abi.encodePacked(
+                "\x19\x01",
+                stakeTokenProxy.DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(PERMIT_TYPEHASH, testStaker, permitSpender, 1 ether, uint256(0), permitDeadline))
+            ));
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x100, digest);
+            stakeTokenProxy.permit(testStaker, permitSpender, 1 ether, permitDeadline, v, r, s);
+            assertEq(stakeTokenProxy.allowance(testStaker, permitSpender), 1 ether, "Permit should set allowance");
+            assertEq(stakeTokenProxy.nonces(testStaker), 1, "Permit should consume a nonce");
+
+            vm.prank(permitSpender);
+            stakeTokenProxy.transferFrom(testStaker, permitSpender, 1 ether);
+            assertEq(stakeTokenProxy.balanceOf(permitSpender), 1 ether, "Permit-granted allowance should be spendable");
+
+            // Put the balance back so the remaining assertions below are unaffected.
+            vm.prank(permitSpender);
+            stakeTokenProxy.transfer(testStaker, 1 ether);
+        }
 
         // Test that functions work after upgrade (with ReentrancyGuard)
         vm.startPrank(testStaker);
